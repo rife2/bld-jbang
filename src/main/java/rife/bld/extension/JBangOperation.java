@@ -40,6 +40,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     private static final Logger LOGGER = Logger.getLogger(JBangOperation.class.getName());
     private final Collection<String> args_ = new ArrayList<>();
     private final Collection<String> jBangArgs_ = new ArrayList<>();
+    private boolean exitOnFailure_ = true;
     private File jBangHome_;
     private BaseProject project_;
     private String script_;
@@ -168,13 +169,28 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
 
             var proc = pb.start();
             proc.waitFor();
-            ExitStatusException.throwOnFailure(proc.exitValue());
+            if (exitOnFailure_) {
+                ExitStatusException.throwOnFailure(proc.exitValue());
+            }
         } catch (Error | IOException | InterruptedException e) {
             if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
                 LOGGER.severe(e.getLocalizedMessage());
             }
             throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
         }
+    }
+
+    /**
+     * Configures whether the operation should exit upon a JBang execution failure.
+     * <p>
+     * Default value is {@code true}
+     *
+     * @param exitOnFailure {@code true} if the operation should exit on failure, {@code false} otherwise
+     * @return this operation instance
+     */
+    public JBangOperation exitOnFailure(boolean exitOnFailure) {
+        this.exitOnFailure_ = exitOnFailure;
+        return this;
     }
 
     private String findJBangExec() {
@@ -214,6 +230,17 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
             jBangHome(jBangHomeEnv);
         }
         return this;
+    }
+
+    /**
+     * Checks whether the operation is configured to exit upon a JBang execution failure.
+     * <p>
+     * Default value is {@code true}
+     *
+     * @return {@code true} if the operation is set to exit on failure, {@code false} otherwise.
+     */
+    public boolean isExitOnFailure() {
+        return exitOnFailure_;
     }
 
     /**
@@ -346,4 +373,5 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     public JBangOperation workDir(String dir) {
         return workDir(new File(dir));
     }
+
 }

@@ -121,6 +121,21 @@ class JBangOperationTests {
         }
 
         @Test
+        void executeWithNoExitOnFailure(@TempDir Path tempDir) throws Exception {
+            var op = new JBangOperation()
+                    .fromProject(new BaseProject())
+                    .jBangArgs("init", "foo.java")
+                    .workDir(tempDir);
+            op.execute();
+
+            assertTrue(Files.exists(tempDir.resolve("foo.java")));
+            assertThrows(ExitStatusException.class, op::execute);
+
+            op.exitOnFailure(false);
+            assertDoesNotThrow(op::execute);
+        }
+
+        @Test
         void executeWithSilent() {
             try {
                 new JBangOperation()
@@ -256,6 +271,31 @@ class JBangOperationTests {
     @Nested
     @DisplayName("Options Tests")
     class Options {
+        @Nested
+        @DisplayName("ExitOnFailure Tests")
+        class ExitOnFailureTests {
+            @Test
+            void verifyExitOnFailure() {
+                var op = new JBangOperation();
+                assertTrue(op.isExitOnFailure());
+
+                op = op.exitOnFailure(true);
+                assertTrue(op.isExitOnFailure());
+            }
+
+            @Test
+            void verifyExitOnFailureDefault() {
+                var op = new JBangOperation();
+                assertTrue(op.isExitOnFailure());
+            }
+
+            @Test
+            void verifyIsNotExitOnFailure() {
+                var op = new JBangOperation().exitOnFailure(false);
+                assertFalse(op.isExitOnFailure());
+            }
+        }
+
         @Nested
         @DisplayName("Script Tests")
         class ScriptTests {

@@ -30,16 +30,17 @@ public class ExampleBuild extends Project {
 
     @BuildCommand(description = "Runs JBang script.")
     public void jbang() throws Exception {
-        // Initialize a script
-        new JBangOperation()
-                .fromProject(this)
-                .jBangArgs("init", "hello.java")
-                .execute();
+        var op = new JBangOperation().fromProject(this);
+
+        // Initialize a script. If JBang fails, the script already exists
+        op.jBangArgs("init", "hello.java").exitOnFailure(false).execute();
+
+        // Clear the JBang args
+        op.jBangArgs().clear();
 
         // Run the script
-        new JBangOperation()
-                .fromProject(this)
-                .jBangArgs("--quiet")
+        op.jBangArgs("--quiet")
+                .exitOnFailure(true)
                 .script("hello.java")
                 .execute();
     }
