@@ -33,7 +33,8 @@ import static rife.bld.operations.JavadocOptions.DocLinkOption.NO_MISSING;
 public class JBangOperationBuild extends Project {
     public JBangOperationBuild() {
         pkg = "rife.bld.extension";
-        name = "bld-jbang";
+        name = "JBang";
+        archiveBaseName = "bld-jbang";
         version = version(0, 9, 0, "SNAPSHOT");
 
         javaRelease = 17;
@@ -65,9 +66,9 @@ public class JBangOperationBuild extends Project {
                 .repository(repository("github"))
                 .info()
                 .groupId("com.uwyn.rife2")
-                .artifactId(name)
+                .artifactId(archiveBaseName)
                 .description("JBang Extension for bld")
-                .url("https://github.com/rife2/" + name)
+                .url("https://github.com/rife2/" + archiveBaseName)
                 .developer(new PublishDeveloper()
                         .id("ethauvin")
                         .name("Erik C. Thauvin")
@@ -77,9 +78,9 @@ public class JBangOperationBuild extends Project {
                         .name("The Apache License, Version 2.0")
                         .url("https://www.apache.org/licenses/LICENSE-2.0.txt"))
                 .scm(new PublishScm()
-                        .connection("scm:git:https://github.com/rife2/" + name + ".git")
-                        .developerConnection("scm:git:git@github.com:rife2/" + name + ".git")
-                        .url("https://github.com/rife2/" + name))
+                        .connection("scm:git:https://github.com/rife2/" + archiveBaseName + ".git")
+                        .developerConnection("scm:git:git@github.com:rife2/" + archiveBaseName + ".git")
+                        .url("https://github.com/rife2/" + archiveBaseName))
                 .signKey(property("sign.key"))
                 .signPassphrase(property("sign.passphrase"));
     }
