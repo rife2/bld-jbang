@@ -38,7 +38,6 @@ import java.util.logging.Logger;
  */
 public class JBangOperation extends AbstractOperation<JBangOperation> {
     private static final Logger LOGGER = Logger.getLogger(JBangOperation.class.getName());
-    private static final String OS_NAME = System.getProperty("os.name") != null ? System.getProperty("os.name").toLowerCase(Locale.ENGLISH) : null;
     private final Collection<String> args_ = new ArrayList<>();
     private final Collection<String> jBangArgs_ = new ArrayList<>();
     private File jBangHome_;
@@ -65,16 +64,19 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return true if the operating system is Linux, false otherwise.
      */
     public static boolean isLinux() {
-        return OS_NAME != null && (OS_NAME.contains("linux") || OS_NAME.contains("unix")); // Consider Unix-like systems as well.
+        var osName = osNameProperty();
+        return osName != null && (osName.contains("linux") || osName.contains("unix")); // Consider Unix-like systems as well.
     }
 
     /**
+     * s
      * Determines if the current operating system is macOS.
      *
      * @return true if the OS is macOS, false otherwise.
      */
     public static boolean isMacOS() {
-        return OS_NAME != null && (OS_NAME.contains("mac") || OS_NAME.contains("darwin") || OS_NAME.contains("osx"));
+        var osName = osNameProperty();
+        return osName != null && (osName.contains("mac") || osName.contains("darwin") || osName.contains("osx"));
     }
 
     /**
@@ -83,7 +85,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return true if the operating system is Windows, false otherwise.
      */
     public static boolean isWindows() {
-        return OS_NAME != null && OS_NAME.contains("win");
+        var osName = osNameProperty();
+        return osName != null && osName.contains("win");
+    }
+
+    private static String osNameProperty() {
+        return System.getProperty("os.name") != null ? System.getProperty("os.name").toLowerCase(Locale.ENGLISH) : null;
     }
 
     /**
@@ -162,7 +169,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
             var proc = pb.start();
             proc.waitFor();
             ExitStatusException.throwOnFailure(proc.exitValue());
-        } catch (IOException | InterruptedException e) {
+        } catch (Error | IOException | InterruptedException e) {
             if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
                 LOGGER.severe(e.getLocalizedMessage());
             }

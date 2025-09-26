@@ -58,6 +58,69 @@ class JBangOperationTests {
     @DisplayName("Execute Tests")
     class ExecuteTests {
         @Test
+        void executeWithInvalidOs() {
+            var originalOsName = System.getProperty("os.name");
+            try {
+                if (JBangOperation.isLinux()) {
+                    System.setProperty("os.name", "windows");
+                } else {
+                    System.setProperty("os.name", "linux");
+                }
+                assertThrows(ExitStatusException.class, () ->
+                        new JBangOperation()
+                                .fromProject(new BaseProject())
+                                .jBangArgs("version")
+                                .execute());
+            } finally {
+                System.setProperty("os.name", originalOsName);
+            }
+        }
+
+        @Test
+        void executeWithInvalidOsNoLogging() {
+            LOGGER.setLevel(Level.OFF);
+            var originalOsName = System.getProperty("os.name");
+            try {
+                if (JBangOperation.isLinux()) {
+                    System.setProperty("os.name", "windows");
+                } else {
+                    System.setProperty("os.name", "linux");
+                }
+                assertThrows(ExitStatusException.class, () ->
+                        new JBangOperation()
+                                .fromProject(new BaseProject())
+                                .jBangArgs("version")
+                                .execute());
+            } finally {
+                System.setProperty("os.name", originalOsName);
+            }
+
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
+        void executeWithInvalidOsSilent() {
+            var originalOsName = System.getProperty("os.name");
+            try {
+                if (JBangOperation.isLinux()) {
+                    System.setProperty("os.name", "windows");
+                } else {
+                    System.setProperty("os.name", "linux");
+                }
+                assertThrows(ExitStatusException.class, () ->
+                        new JBangOperation()
+                                .fromProject(new BaseProject())
+                                .silent(true)
+                                .jBangArgs("version")
+                                .execute());
+            } finally {
+                System.setProperty("os.name", originalOsName);
+            }
+
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
         void executeWithSilent() {
             try {
                 new JBangOperation()
@@ -272,6 +335,74 @@ class JBangOperationTests {
                 assertTrue(JBangOperation.isWindows());
                 assertFalse(JBangOperation.isLinux());
                 assertFalse(JBangOperation.isMacOS());
+            }
+
+            @Test
+            void verifyOsNameDarwin() {
+                var originalOsName = System.getProperty("os.name");
+                try {
+                    System.setProperty("os.name", "darwin");
+                    assertTrue(JBangOperation.isMacOS(), "os.name should be darwin");
+                } finally {
+                    System.setProperty("os.name", originalOsName);
+                }
+            }
+
+            @Test
+            void verifyOsNameIsNull() {
+                var originalOsName = System.getProperty("os.name");
+                try {
+                    System.clearProperty("os.name");
+                    assertFalse(JBangOperation.isLinux(), "isLinux should be false");
+                    assertFalse(JBangOperation.isWindows(), "isWindows should be false");
+                    assertFalse(JBangOperation.isMacOS(), "isMacOS should be false");
+                } finally {
+                    System.setProperty("os.name", originalOsName);
+                }
+            }
+
+            @Test
+            void verifyOsNameLinux() {
+                var originalOsName = System.getProperty("os.name");
+                try {
+                    System.setProperty("os.name", "linux");
+                    assertTrue(JBangOperation.isLinux(), "os.name should be linux");
+                } finally {
+                    System.setProperty("os.name", originalOsName);
+                }
+            }
+
+            @Test
+            void verifyOsNameMacOS() {
+                var originalOsName = System.getProperty("os.name");
+                try {
+                    System.setProperty("os.name", "macos");
+                    assertTrue(JBangOperation.isMacOS(), "os.name should be macos");
+                } finally {
+                    System.setProperty("os.name", originalOsName);
+                }
+            }
+
+            @Test
+            void verifyOsNameUnix() {
+                var originalOsName = System.getProperty("os.name");
+                try {
+                    System.setProperty("os.name", "unix");
+                    assertTrue(JBangOperation.isLinux(), "os.name should be unix");
+                } finally {
+                    System.setProperty("os.name", originalOsName);
+                }
+            }
+
+            @Test
+            void verifyOsNameWindows() {
+                var originalOsName = System.getProperty("os.name");
+                try {
+                    System.setProperty("os.name", "windows");
+                    assertTrue(JBangOperation.isWindows(), "os.name should be windows");
+                } finally {
+                    System.setProperty("os.name", originalOsName);
+                }
             }
         }
 
