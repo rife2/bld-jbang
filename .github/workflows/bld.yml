@@ -26,20 +26,20 @@ jobs:
       - name: Set up JBang
         uses: jbangdev/setup-jbang@main
 
-      - name: Download dependencies [examples]
-        working-directory: examples
+      - name: Download dependencies [example]
+        working-directory: example
         run: ./bld download
 
-      - name: Compile source code [examples]
-        working-directory: examples
+      - name: Compile source code [example]
+        working-directory: example
         run: ./bld compile
 
-      - name: Run JBang [examples]
-        working-directory: examples
+      - name: Run JBang [example]
+        working-directory: example
         run: ./bld jbang
 
-      - name: Compile run tests [examples]
-        working-directory: examples
+      - name: Compile run tests [example]
+        working-directory: example
         run: ./bld test
 
       - name: Download dependencies

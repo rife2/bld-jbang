@@ -34,6 +34,7 @@ Then run the following command:
 ./bld jbang
 ```
 
-- [View Examples Project](https://github.com/rife2/bld-jbang/blob/master/examples/src/bld/java/com/example/)
+- [View Example Project](https://github.com/rife2/bld-jbang/blob/master/example/src/bld/java/com/example/)
 
-Please check the [documentation](https://rife2.github.io/bld-jbang/rife/bld/extension/package-summary.html) for all available configuration options.
+Please check the [documentation](https://rife2.github.io/bld-jbang/rife/bld/extension/package-summary.html)
+for all available configuration options.
