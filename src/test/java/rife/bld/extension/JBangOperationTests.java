@@ -54,40 +54,59 @@ class JBangOperationTests {
             Level.ALL
     );
 
-    @Test
-    void executeWithSilent() {
-        try {
-            new JBangOperation()
+    @Nested
+    @DisplayName("Execute Tests")
+    class ExecuteTests {
+        @Test
+        void executeWithSilent() {
+            try {
+                new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .silent(true)
+                        .jBangArgs("version")
+                        .execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
+        void executeWithSuppressAllLogs() {
+            LOGGER.setLevel(Level.OFF);
+            var op = new JBangOperation()
                     .fromProject(new BaseProject())
                     .silent(true)
+                    .jBangArgs("version");
+            try {
+                op.execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
+        void executeWithoutCommandLogging() throws Exception {
+            LOGGER.setLevel(Level.WARNING);
+            new JBangOperation()
+                    .fromProject(new BaseProject())
                     .jBangArgs("version")
                     .execute();
-        } catch (Exception e) {
-            assertInstanceOf(ExitStatusException.class, e);
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
-        assertTrue(TEST_LOG_HANDLER.isEmpty());
-    }
 
-    @Test
-    void executeWithoutCommandLogging() throws Exception {
-        LOGGER.setLevel(Level.WARNING);
-        new JBangOperation()
-                .fromProject(new BaseProject())
-                .jBangArgs("version")
-                .execute();
-        assertTrue(TEST_LOG_HANDLER.isEmpty());
-    }
-
-    @Test
-    void helloWorld(@TempDir Path tempDir) throws IOException {
-        var helloTxt = tempDir.resolve("hello.txt");
-        var op = new JBangOperation()
-                .fromProject(new BaseProject())
-                .jBangArgs("--quiet")
-                .script("src/test/resources/hello.java")
-                .args(helloTxt.toString());
-        assertDoesNotThrow(op::execute);
-        assertEquals("Hello World", Files.readString(helloTxt));
+        @Test
+        void helloWorld(@TempDir Path tempDir) throws IOException {
+            var helloTxt = tempDir.resolve("hello.txt");
+            var op = new JBangOperation()
+                    .fromProject(new BaseProject())
+                    .jBangArgs("--quiet")
+                    .script("src/test/resources/hello.java")
+                    .args(helloTxt.toString());
+            assertDoesNotThrow(op::execute);
+            assertEquals("Hello World", Files.readString(helloTxt));
+        }
     }
 
     @Nested
@@ -174,13 +193,26 @@ class JBangOperationTests {
     @Nested
     @DisplayName("Options Tests")
     class Options {
-        @Test
-        void verifyScript() {
-            var script = "src/test/resources/hello.java";
-            var op = new JBangOperation()
-                    .fromProject(new BaseProject())
-                    .script(script);
-            assertEquals(script, op.script());
+        @Nested
+        @DisplayName("Script Tests")
+        class ScriptTests {
+            @Test
+            void executeWithMissingScript() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangArgs("run");
+                var e = assertThrows(Exception.class, op::execute);
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+
+            @Test
+            void verifyScript() {
+                var script = "src/test/resources/hello.java";
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .script(script);
+                assertEquals(script, op.script());
+            }
         }
 
         @Nested
@@ -203,6 +235,15 @@ class JBangOperationTests {
                         .args("foo", "bar");
                 assertEquals(2, op.args().size());
                 assertTrue(op.args().containsAll(List.of("foo", "bar")));
+            }
+
+
+            @Test
+            void verifyEmptyArgsList() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .args(List.of());
+                assertTrue(op.args().isEmpty());
             }
         }
 
@@ -238,7 +279,15 @@ class JBangOperationTests {
         @DisplayName("JBangArgs Tests")
         class JBangArgsTests {
             @Test
-            void verifyJBanArgs() {
+            void verifyEmptyJBangArgsList() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangArgs(List.of());
+                assertTrue(op.jBangArgs().isEmpty());
+            }
+
+            @Test
+            void verifyJBangArgs() {
                 var args = List.of("foo", "bar");
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
@@ -248,7 +297,7 @@ class JBangOperationTests {
             }
 
             @Test
-            void verifyJBanArgsAsArray() {
+            void verifyJBangArgsAsArray() {
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
                         .jBangArgs("foo", "bar");
@@ -260,6 +309,16 @@ class JBangOperationTests {
         @Nested
         @DisplayName("JBangHome Tests")
         class JBangHomeTest {
+            @Test
+            void executeWithInvalidJBangHome() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangHome("/invalid/path")
+                        .jBangArgs("version");
+                var e = assertThrows(Exception.class, op::execute);
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+
             @Test
             void verifyJBangHome() {
                 var foo = new File("foo");

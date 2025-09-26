@@ -38,7 +38,7 @@ jobs:
         working-directory: example
         run: ./bld jbang
 
-      - name: Compile run tests [example]
+      - name: Run tests [example]
         working-directory: example
         run: ./bld test
 
