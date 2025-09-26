@@ -38,5 +38,20 @@ Then run the following command:
 
 - [View Example Project](https://github.com/rife2/bld-jbang/tree/main/example)
 
+To set `trusts` before running a script, you could do something like:
+
+```java
+@BuildCommand(value = "jbang", summary = "Runs JBang script.")
+public void jbang() throws Exception {
+    var trusts = List.of("https://example.com/", "https://jbang.dev/");
+    var op = new JBangOperation().fromProject(this);
+    op.jBangArgs("trust", "add").jBangArgs(trusts).execute();
+    op.jBangArgs.clear();
+    op.script("path/to/script.java").execute();
+}
+
+
+```
+
 Please check the [documentation](https://rife2.github.io/bld-jbang/rife/bld/extension/package-summary.html)
 for all available configuration options.
