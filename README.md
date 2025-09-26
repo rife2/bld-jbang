@@ -43,11 +43,11 @@ To set `trusts` before running a script, you could do something like:
 ```java
 @BuildCommand(value = "jbang", summary = "Runs JBang script.")
 public void jbang() throws Exception {
-    var trusts = List.of("https://example.com/", "https://jbang.dev/");
+    var trusts = List.of("https://github.com/", "https://jbang.dev/");
     var op = new JBangOperation().fromProject(this);
     op.jBangArgs("trust", "add").jBangArgs(trusts).execute();
-    op.jBangArgs.clear();
-    op.script("path/to/script.java").execute();
+    op.jBangArgs().clear();
+    op.script("https://github.com/jbangdev/jbang-examples/blob/main/examples/helloworld.javall").execute();
 }
 
 
