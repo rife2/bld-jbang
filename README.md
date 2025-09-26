@@ -24,7 +24,9 @@ For example, to execute a JBang script, add the following to your build file:
 public void jbang() throws Exception {
     new JBangOperation()
             .fromProject(this)
+            .jBangArgs("--quiet")
             .script("path/to/script.java")
+            .args("foo", "bar")
             .execute();
 }
 ```
