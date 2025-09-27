@@ -62,7 +62,7 @@ class JBangOperationTests {
         void executeWithInvalidOs() {
             var originalOsName = System.getProperty("os.name");
             try {
-                if (JBangOperation.isLinux()) {
+                if (JBangOperation.isLinux() || JBangOperation.isMacOS()) {
                     System.setProperty("os.name", "windows");
                 } else {
                     System.setProperty("os.name", "linux");
@@ -82,7 +82,7 @@ class JBangOperationTests {
             LOGGER.setLevel(Level.OFF);
             var originalOsName = System.getProperty("os.name");
             try {
-                if (JBangOperation.isLinux()) {
+                if (JBangOperation.isLinux() || JBangOperation.isMacOS()) {
                     System.setProperty("os.name", "windows");
                 } else {
                     System.setProperty("os.name", "linux");
@@ -103,7 +103,7 @@ class JBangOperationTests {
         void executeWithInvalidOsSilent() {
             var originalOsName = System.getProperty("os.name");
             try {
-                if (JBangOperation.isLinux()) {
+                if (JBangOperation.isLinux() || JBangOperation.isMacOS()) {
                     System.setProperty("os.name", "windows");
                 } else {
                     System.setProperty("os.name", "linux");
@@ -518,7 +518,7 @@ class JBangOperationTests {
             void executeWithJBangHomeOnCi() {
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
-                        .jBangHome(Path.of(System.getenv("HOME"), ".jbang", "bin"))
+                        .jBangHome(Path.of(System.getenv("HOME"), ".jbang"))
                         .jBangArgs("version");
                 assertDoesNotThrow(op::execute);
             }
