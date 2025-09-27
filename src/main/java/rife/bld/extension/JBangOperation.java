@@ -315,6 +315,20 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
+     * Resets the state of the operation to its default values.
+     * <p>
+     * Clears all {@link #jBangArgs() jBang arguments} used for execution, resets the
+     * {@link #isExitOnFailure()  exit on failure flag} to {@code true}, removes the assigned
+     * {@link #script() script} and {@link #args() arguments}.
+     */
+    public void reset() {
+        args_.clear();
+        jBangArgs_.clear();
+        exitOnFailure_ = true;
+        script_ = null;
+    }
+
+    /**
      * Sets the script to be executed.
      *
      * @param script the script to execute

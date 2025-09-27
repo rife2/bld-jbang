@@ -35,12 +35,11 @@ public class ExampleBuild extends Project {
         // Initialize a script. If JBang fails, the script already exists
         op.jBangArgs("init", "hello.java").exitOnFailure(false).execute();
 
-        // Clear the JBang args
-        op.jBangArgs().clear();
+        // Reset the JBang options
+        op.reset();
 
         // Run the script
         op.jBangArgs("--quiet")
-                .exitOnFailure(true)
                 .script("hello.java")
                 .execute();
     }

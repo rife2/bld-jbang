@@ -46,7 +46,7 @@ public void jbang() throws Exception {
     var trusts = List.of("https://github.com/", "https://jbang.dev/");
     var op = new JBangOperation().fromProject(this);
     op.jBangArgs("trust", "add").jBangArgs(trusts).execute();
-    op.jBangArgs().clear();
+    op.reset();
     op.script("https://github.com/jbangdev/jbang-examples/blob/main/examples/helloworld.javall").execute();
 }
 

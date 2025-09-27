@@ -25,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import rife.bld.BaseProject;
+import rife.bld.extension.testing.EnabledOnCi;
 import rife.bld.extension.testing.LoggingExtension;
 import rife.bld.extension.testing.TestLogHandler;
 import rife.bld.operations.exceptions.ExitStatusException;
@@ -271,6 +272,27 @@ class JBangOperationTests {
     @Nested
     @DisplayName("Options Tests")
     class Options {
+        @Test
+        void verifyReset() {
+            var op = new JBangOperation()
+                    .exitOnFailure(false)
+                    .jBangArgs("run")
+                    .script("hello.java")
+                    .args("foo", "bar");
+
+            assertFalse(op.isExitOnFailure(), "exitOnFailure should be false");
+            assertEquals(1, op.jBangArgs().size(), "jBangArgs should have 1 element");
+            assertEquals("hello.java", op.script(), "script should be hello.java");
+            assertEquals(2, op.args().size(), "args should have 2 elements");
+
+            op.reset();
+
+            assertTrue(op.isExitOnFailure(), "exitOnFailure should be true");
+            assertTrue(op.jBangArgs().isEmpty(), "jBangArgs should be empty");
+            assertNull(op.script(), "script should be null");
+            assertTrue(op.args().isEmpty(), "args should be empty");
+        }
+
         @Nested
         @DisplayName("ExitOnFailure Tests")
         class ExitOnFailureTests {
@@ -488,6 +510,17 @@ class JBangOperationTests {
                         .jBangArgs("version");
                 var e = assertThrows(Exception.class, op::execute);
                 assertInstanceOf(ExitStatusException.class, e);
+            }
+
+            @Test
+            @EnabledOnOs({OS.LINUX, OS.MAC})
+            @EnabledOnCi
+            void executeWithJBangHomeOnCi() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangHome(Path.of(System.getenv("HOME"), ".jbang", "bin"))
+                        .jBangArgs("version");
+                assertDoesNotThrow(op::execute);
             }
 
             @Test
