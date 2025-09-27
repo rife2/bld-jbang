@@ -59,14 +59,11 @@ class JBangOperationTests {
     @DisplayName("Execute Tests")
     class ExecuteTests {
         @Test
+        @EnabledOnOs({OS.LINUX, OS.MAC})
         void executeWithInvalidOs() {
             var originalOsName = System.getProperty("os.name");
             try {
-                if (JBangOperation.isLinux() || JBangOperation.isMacOS()) {
-                    System.setProperty("os.name", "windows");
-                } else {
-                    System.setProperty("os.name", "linux");
-                }
+                System.setProperty("os.name", "windows");
                 assertThrows(ExitStatusException.class, () ->
                         new JBangOperation()
                                 .fromProject(new BaseProject())
@@ -78,15 +75,12 @@ class JBangOperationTests {
         }
 
         @Test
+        @EnabledOnOs({OS.LINUX, OS.MAC})
         void executeWithInvalidOsNoLogging() {
             LOGGER.setLevel(Level.OFF);
             var originalOsName = System.getProperty("os.name");
             try {
-                if (JBangOperation.isLinux() || JBangOperation.isMacOS()) {
-                    System.setProperty("os.name", "windows");
-                } else {
-                    System.setProperty("os.name", "linux");
-                }
+                System.setProperty("os.name", "windows");
                 assertThrows(ExitStatusException.class, () ->
                         new JBangOperation()
                                 .fromProject(new BaseProject())
@@ -100,14 +94,11 @@ class JBangOperationTests {
         }
 
         @Test
+        @EnabledOnOs({OS.LINUX, OS.MAC})
         void executeWithInvalidOsSilent() {
             var originalOsName = System.getProperty("os.name");
             try {
-                if (JBangOperation.isLinux() || JBangOperation.isMacOS()) {
-                    System.setProperty("os.name", "windows");
-                } else {
-                    System.setProperty("os.name", "linux");
-                }
+                System.setProperty("os.name", "windows");
                 assertThrows(ExitStatusException.class, () ->
                         new JBangOperation()
                                 .fromProject(new BaseProject())
