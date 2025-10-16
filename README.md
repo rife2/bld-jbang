@@ -1,4 +1,4 @@
-# [JBang](https://www.jbang.dev/) Extension for [b<span style="color:orange">l</span>d](https://rife2.com/bld) 
+# [JBang](https://www.jbang.dev/) Extension for [b<span style="color:orange">l</span>d](https://rife2.com/bld)
 
 [![License](https://img.shields.io/badge/license-Apache%20License%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Java](https://img.shields.io/badge/java-17%2B-blue)](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html)
@@ -32,6 +32,7 @@ public void jbang() throws Exception {
 ```
 
 Then run the following command:
+
 ```
 ./bld jbang
 ```
@@ -53,5 +54,5 @@ public void jbang() throws Exception {
 
 ```
 
-Please check the [documentation](https://rife2.github.io/bld-jbang/rife/bld/extension/package-summary.html)
+Please check the [documentation](https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#method-summary-table)
 for all available configuration options.
