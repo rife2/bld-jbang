@@ -10,6 +10,12 @@
 ./bld jbang
 ```
 
+# Run the example
+
+```console
+./bld run
+```
+
 # Test the example
 
 ```console

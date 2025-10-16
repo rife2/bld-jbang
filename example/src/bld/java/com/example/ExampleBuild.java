@@ -32,7 +32,7 @@ public class ExampleBuild extends Project {
     public void jbang() throws Exception {
         var op = new JBangOperation().fromProject(this);
 
-        // Initialize a script. If JBang fails, the script already exists
+        // Initialize a script. If JBang fails, the script probably already exists
         op.jBangArgs("init", "hello.java").exitOnFailure(false).execute();
 
         // Reset the JBang options
