@@ -28,7 +28,7 @@ public class ExampleBuild extends Project {
         new ExampleBuild().start(args);
     }
 
-    @BuildCommand(description = "Runs JBang script.")
+    @BuildCommand(summary = "Runs JBang script")
     public void jbang() throws Exception {
         var op = new JBangOperation().fromProject(this);
 

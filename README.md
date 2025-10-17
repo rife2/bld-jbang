@@ -20,7 +20,7 @@ For more information, please refer to the [extensions](https://github.com/rife2/
 For example, to execute a JBang script, add the following to your build file:
 
 ```java
-@BuildCommand(value = "jbang", summary = "Runs JBang script.")
+@BuildCommand(summary = "Runs JBang script")
 public void jbang() throws Exception {
     new JBangOperation()
             .fromProject(this)
@@ -42,7 +42,7 @@ Then run the following command:
 To set `trusts` before running a script, you could do something like:
 
 ```java
-@BuildCommand(value = "jbang", summary = "Runs JBang script.")
+@BuildCommand(summary = "Runs JBang script")
 public void jbang() throws Exception {
     var trusts = List.of("https://github.com/", "https://jbang.dev/");
     var op = new JBangOperation().fromProject(this);
