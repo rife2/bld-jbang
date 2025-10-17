@@ -37,6 +37,11 @@ Then run the following command:
 ./bld jbang
 ```
 
+The script will be executed using the currently installed instance of JBang.
+To manually specify the location of the JBang home use the one of the
+[jBangHome()](https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#jBangHome(java.lang.String))
+methods.
+
 - [View Example Project](https://github.com/rife2/bld-jbang/tree/main/example)
 
 To set `trusts` before running a script, you could do something like:
