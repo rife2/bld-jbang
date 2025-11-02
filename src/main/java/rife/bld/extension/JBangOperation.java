@@ -16,6 +16,7 @@
 
 package rife.bld.extension;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import rife.bld.BaseProject;
 import rife.bld.operations.AbstractOperation;
 import rife.bld.operations.exceptions.ExitStatusException;
@@ -121,6 +122,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @return a collection of arguments
      */
+    @SuppressFBWarnings("EI_EXPOSE_REP")
     public Collection<String> args() {
         return args_;
     }
@@ -270,6 +272,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @return a collection of script arguments
      */
+    @SuppressFBWarnings("EI_EXPOSE_REP")
     public Collection<String> jBangArgs() {
         return jBangArgs_;
     }

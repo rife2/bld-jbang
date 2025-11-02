@@ -26,8 +26,7 @@ import java.io.File;
 import java.util.List;
 
 import static rife.bld.dependencies.Repository.*;
-import static rife.bld.dependencies.Scope.compile;
-import static rife.bld.dependencies.Scope.test;
+import static rife.bld.dependencies.Scope.*;
 import static rife.bld.operations.JavadocOptions.DocLinkOption.NO_MISSING;
 
 public class JBangOperationBuild extends Project {
@@ -35,7 +34,7 @@ public class JBangOperationBuild extends Project {
         pkg = "rife.bld.extension";
         name = "JBang";
         archiveBaseName = "bld-jbang";
-        version = version(0, 9, 0);
+        version = version(0, 9, 1, "SNAPSHOT");
 
         javaRelease = 17;
 
@@ -47,6 +46,9 @@ public class JBangOperationBuild extends Project {
         var junit = version(6, 0, 1);
         scope(compile)
                 .include(dependency("com.uwyn.rife2", "bld", version(2, 3, 0)));
+        scope(provided)
+                .include(dependency("com.github.spotbugs", "spotbugs-annotations",
+                        version(4, 9, 8)));
         scope(test)
                 .include(dependency("com.uwyn.rife2", "bld-extensions-testing-helpers",
                         version(0, 9, 4)))
