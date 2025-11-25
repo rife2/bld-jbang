@@ -53,6 +53,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      */
     @Override
     @SuppressWarnings({"PMD.PreserveStackTrace", "PMD.AvoidCatchingGenericException"})
+    @SuppressFBWarnings({"COMMAND_INJECTION", "LEST_LOST_EXCEPTION_STACK_TRACE"})
     public void execute() throws Exception {
         if (workDir_ == null) {
             if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
@@ -369,6 +370,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @param dir the directory path
      * @return this operation instance
      */
+    @SuppressFBWarnings("PATH_TRAVERSAL_IN")
     public JBangOperation workDir(String dir) {
         return workDir(new File(dir));
     }

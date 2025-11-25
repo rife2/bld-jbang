@@ -180,83 +180,6 @@ class JBangOperationTests {
     }
 
     @Nested
-    @DisplayName("Work DirTests")
-    class WorkDirTests {
-        @Test
-        void workDiInvalidWithoutLogging() {
-            LOGGER.setLevel(Level.OFF);
-            try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .workDir("foo")
-                        .execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
-        }
-
-        @Test
-        void workDirInvalid() {
-            try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .workDir("foo")
-                        .execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.containsMessage("Invalid working directory"));
-        }
-
-        @Test
-        void workDirInvalidWithSilent() {
-            try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .workDir("foo")
-                        .silent(true)
-                        .execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
-        }
-
-        @Test
-        void workDirRequired() {
-            try {
-                new JBangOperation().execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.containsMessage("A work dir must be specified."));
-        }
-
-        @Test
-        void workDirWithSilent() {
-            LOGGER.setLevel(Level.WARNING);
-            try {
-                new JBangOperation().silent(true).execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
-        }
-
-        @Test
-        void workDirWithoutLogging() {
-            LOGGER.setLevel(Level.OFF);
-            try {
-                new JBangOperation().execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
-        }
-    }
-
-    @Nested
     @DisplayName("Options Tests")
     class Options {
         @Test
@@ -278,53 +201,6 @@ class JBangOperationTests {
             assertTrue(op.jBangArgs().isEmpty(), "jBangArgs should be empty");
             assertNull(op.script(), "script should be null");
             assertTrue(op.args().isEmpty(), "args should be empty");
-        }
-
-        @Nested
-        @DisplayName("ExitOnFailure Tests")
-        class ExitOnFailureTests {
-            @Test
-            void verifyExitOnFailure() {
-                var op = new JBangOperation();
-                assertTrue(op.isExitOnFailure());
-
-                op = op.exitOnFailure(true);
-                assertTrue(op.isExitOnFailure());
-            }
-
-            @Test
-            void verifyExitOnFailureDefault() {
-                var op = new JBangOperation();
-                assertTrue(op.isExitOnFailure());
-            }
-
-            @Test
-            void verifyIsNotExitOnFailure() {
-                var op = new JBangOperation().exitOnFailure(false);
-                assertFalse(op.isExitOnFailure());
-            }
-        }
-
-        @Nested
-        @DisplayName("Script Tests")
-        class ScriptTests {
-            @Test
-            void executeWithMissingScript() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangArgs("run");
-                var e = assertThrows(Exception.class, op::execute);
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-
-            @Test
-            void verifyScript() {
-                var script = "src/test/resources/hello.java";
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .script(script);
-                assertEquals(script, op.script());
-            }
         }
 
         @Nested
@@ -356,6 +232,115 @@ class JBangOperationTests {
                         .fromProject(new BaseProject())
                         .args(List.of());
                 assertTrue(op.args().isEmpty());
+            }
+        }
+
+        @Nested
+        @DisplayName("ExitOnFailure Tests")
+        class ExitOnFailureTests {
+            @Test
+            void verifyExitOnFailure() {
+                var op = new JBangOperation();
+                assertTrue(op.isExitOnFailure());
+
+                op = op.exitOnFailure(true);
+                assertTrue(op.isExitOnFailure());
+            }
+
+            @Test
+            void verifyExitOnFailureDefault() {
+                var op = new JBangOperation();
+                assertTrue(op.isExitOnFailure());
+            }
+
+            @Test
+            void verifyIsNotExitOnFailure() {
+                var op = new JBangOperation().exitOnFailure(false);
+                assertFalse(op.isExitOnFailure());
+            }
+        }
+
+        @Nested
+        @DisplayName("JBangArgs Tests")
+        class JBangArgsTests {
+            @Test
+            void verifyEmptyJBangArgsList() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangArgs(List.of());
+                assertTrue(op.jBangArgs().isEmpty());
+            }
+
+            @Test
+            void verifyJBangArgs() {
+                var args = List.of("foo", "bar");
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangArgs(args);
+                assertEquals(2, op.jBangArgs().size());
+                assertTrue(op.jBangArgs().containsAll(args));
+            }
+
+            @Test
+            void verifyJBangArgsAsArray() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangArgs("foo", "bar");
+                assertEquals(2, op.jBangArgs().size());
+                assertTrue(op.jBangArgs().containsAll(List.of("foo", "bar")));
+            }
+        }
+
+        @Nested
+        @DisplayName("JBangHome Tests")
+        class JBangHomeTest {
+            @Test
+            void executeWithInvalidJBangHome() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangHome("/invalid/path")
+                        .jBangArgs("version");
+                var e = assertThrows(Exception.class, op::execute);
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+
+            @Test
+            @EnabledOnOs({OS.LINUX, OS.MAC})
+            @EnabledOnCi
+            void executeWithJBangHomeOnCi() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangHome(Path.of(System.getenv("HOME"), ".jbang"))
+                        .jBangArgs("version");
+                assertDoesNotThrow(op::execute);
+            }
+
+            @Test
+            void verifyJBangHome() {
+                var foo = new File("foo");
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangHome(foo);
+                assertEquals(foo, op.jBangHome());
+
+            }
+
+            @Test
+            void verifyJBangHomeAsPath() {
+                var foo = Path.of("foo");
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangHome(foo);
+                assertEquals(foo.toFile(), op.jBangHome());
+            }
+
+            @Test
+            void verifyJBangHomeAsString() {
+                var op = new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .jBangHome("foo");
+                assertEquals("foo", op.jBangHome().toString());
+
             }
         }
 
@@ -456,86 +441,24 @@ class JBangOperationTests {
         }
 
         @Nested
-        @DisplayName("JBangArgs Tests")
-        class JBangArgsTests {
+        @DisplayName("Script Tests")
+        class ScriptTests {
             @Test
-            void verifyEmptyJBangArgsList() {
+            void executeWithMissingScript() {
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
-                        .jBangArgs(List.of());
-                assertTrue(op.jBangArgs().isEmpty());
-            }
-
-            @Test
-            void verifyJBangArgs() {
-                var args = List.of("foo", "bar");
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangArgs(args);
-                assertEquals(2, op.jBangArgs().size());
-                assertTrue(op.jBangArgs().containsAll(args));
-            }
-
-            @Test
-            void verifyJBangArgsAsArray() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangArgs("foo", "bar");
-                assertEquals(2, op.jBangArgs().size());
-                assertTrue(op.jBangArgs().containsAll(List.of("foo", "bar")));
-            }
-        }
-
-        @Nested
-        @DisplayName("JBangHome Tests")
-        class JBangHomeTest {
-            @Test
-            void executeWithInvalidJBangHome() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangHome("/invalid/path")
-                        .jBangArgs("version");
+                        .jBangArgs("run");
                 var e = assertThrows(Exception.class, op::execute);
                 assertInstanceOf(ExitStatusException.class, e);
             }
 
             @Test
-            @EnabledOnOs({OS.LINUX, OS.MAC})
-            @EnabledOnCi
-            void executeWithJBangHomeOnCi() {
+            void verifyScript() {
+                var script = "src/test/resources/hello.java";
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
-                        .jBangHome(Path.of(System.getenv("HOME"), ".jbang"))
-                        .jBangArgs("version");
-                assertDoesNotThrow(op::execute);
-            }
-
-            @Test
-            void verifyJBangHome() {
-                var foo = new File("foo");
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangHome(foo);
-                assertEquals(foo, op.jBangHome());
-
-            }
-
-            @Test
-            void verifyJBangHomeAsPath() {
-                var foo = Path.of("foo");
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangHome(foo);
-                assertEquals(foo.toFile(), op.jBangHome());
-            }
-
-            @Test
-            void verifyJBangHomeAsString() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangHome("foo");
-                assertEquals("foo", op.jBangHome().toString());
-
+                        .script(script);
+                assertEquals(script, op.script());
             }
         }
 
@@ -566,6 +489,83 @@ class JBangOperationTests {
                         .workDir("foo");
                 assertEquals("foo", op.workDir().toString());
             }
+        }
+    }
+
+    @Nested
+    @DisplayName("Work DirTests")
+    class WorkDirTests {
+        @Test
+        void workDiInvalidWithoutLogging() {
+            LOGGER.setLevel(Level.OFF);
+            try {
+                new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .workDir("foo")
+                        .execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
+        void workDirInvalid() {
+            try {
+                new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .workDir("foo")
+                        .execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.containsMessage("Invalid working directory"));
+        }
+
+        @Test
+        void workDirInvalidWithSilent() {
+            try {
+                new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .workDir("foo")
+                        .silent(true)
+                        .execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
+        void workDirRequired() {
+            try {
+                new JBangOperation().execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.containsMessage("A work dir must be specified."));
+        }
+
+        @Test
+        void workDirWithSilent() {
+            LOGGER.setLevel(Level.WARNING);
+            try {
+                new JBangOperation().silent(true).execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
+        void workDirWithoutLogging() {
+            LOGGER.setLevel(Level.OFF);
+            try {
+                new JBangOperation().execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
     }
 }
