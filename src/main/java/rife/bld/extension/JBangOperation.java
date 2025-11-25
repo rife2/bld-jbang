@@ -43,9 +43,63 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     private final Collection<String> jBangArgs_ = new ArrayList<>();
     private boolean exitOnFailure_ = true;
     private File jBangHome_;
-    private BaseProject project_;
     private String script_;
     private File workDir_;
+
+    /**
+     * Performs the operation
+     *
+     * @throws Exception if an error occurs
+     */
+    @Override
+    @SuppressWarnings({"PMD.PreserveStackTrace", "PMD.AvoidCatchingGenericException"})
+    public void execute() throws Exception {
+        if (workDir_ == null) {
+            if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
+                LOGGER.severe("A work dir must be specified.");
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+        } else if (!workDir_.isDirectory()) {
+            if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
+                LOGGER.severe("Invalid working directory: " + workDir_.getAbsolutePath());
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+        }
+
+        var shellCommand = new ArrayList<>(createShellCommand());
+        var shellCommandArgs = new ArrayList<String>();
+        shellCommandArgs.add(findJBangExec());
+        shellCommandArgs.addAll(jBangArgs_);
+        if (script_ != null) {
+            shellCommandArgs.add(script_);
+        }
+        shellCommandArgs.addAll(args_);
+
+        var jBandCommand = String.join(" ", shellCommandArgs);
+        if (LOGGER.isLoggable(Level.INFO) && !silent()) {
+            LOGGER.info(jBandCommand);
+        }
+        shellCommand.add(jBandCommand);
+
+        try {
+            // run the command
+            var pb = new ProcessBuilder();
+            pb.inheritIO();
+            pb.command(shellCommand);
+            pb.directory(workDir_);
+
+            var proc = pb.start();
+            proc.waitFor();
+            if (exitOnFailure_) {
+                ExitStatusException.throwOnFailure(proc.exitValue());
+            }
+        } catch (Error | IOException | InterruptedException e) {
+            if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
+                LOGGER.severe(e.getLocalizedMessage());
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+        }
+    }
 
     private static List<String> createShellCommand() {
         var command = new ArrayList<String>();
@@ -128,61 +182,6 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Performs the operation
-     *
-     * @throws Exception if an error occurs
-     */
-    @Override
-    @SuppressWarnings("PMD.PreserveStackTrace")
-    public void execute() throws Exception {
-        if (project_ == null) {
-            if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
-                LOGGER.severe("A project must be specified.");
-            }
-            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
-        } else if (!workDir_.isDirectory()) {
-            if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
-                LOGGER.severe("Invalid working directory: " + workDir_.getAbsolutePath());
-            }
-            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
-        }
-
-        var shellCommand = new ArrayList<>(createShellCommand());
-        var shellCommandArgs = new ArrayList<String>();
-        shellCommandArgs.add(findJBangExec());
-        shellCommandArgs.addAll(jBangArgs_);
-        if (script_ != null) {
-            shellCommandArgs.add(script_);
-        }
-        shellCommandArgs.addAll(args_);
-
-        var jBandCommand = String.join(" ", shellCommandArgs);
-        if (LOGGER.isLoggable(Level.INFO) && !silent()) {
-            LOGGER.info(jBandCommand);
-        }
-        shellCommand.add(jBandCommand);
-
-        try {
-            // run the command
-            var pb = new ProcessBuilder();
-            pb.inheritIO();
-            pb.command(shellCommand);
-            pb.directory(workDir_);
-
-            var proc = pb.start();
-            proc.waitFor();
-            if (exitOnFailure_) {
-                ExitStatusException.throwOnFailure(proc.exitValue());
-            }
-        } catch (Error | IOException | InterruptedException e) {
-            if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
-                LOGGER.severe(e.getLocalizedMessage());
-            }
-            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
-        }
-    }
-
-    /**
      * Configures whether the operation should exit upon a JBang execution failure.
      * <p>
      * Default value is {@code true}
@@ -193,22 +192,6 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     public JBangOperation exitOnFailure(boolean exitOnFailure) {
         this.exitOnFailure_ = exitOnFailure;
         return this;
-    }
-
-    private String findJBangExec() {
-        if (jBangHome_ != null) {
-            if (isWindows()) {
-                return Path.of(jBangHome_.getAbsolutePath(), "bin", "jbang.cmd").toString();
-            } else {
-                return Path.of(jBangHome_.getAbsolutePath(), "bin", "jbang").toString();
-            }
-        } else {
-            if (isWindows()) {
-                return "jbang.cmd";
-            } else {
-                return "jbang";
-            }
-        }
     }
 
     /**
@@ -224,7 +207,6 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation fromProject(BaseProject project) {
-        project_ = project;
         workDir_ = project.workDirectory().getAbsoluteFile();
 
         var jBangHomeEnv = System.getenv("JBANG_HOME");
@@ -389,6 +371,22 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      */
     public JBangOperation workDir(String dir) {
         return workDir(new File(dir));
+    }
+
+    private String findJBangExec() {
+        if (jBangHome_ != null) {
+            if (isWindows()) {
+                return Path.of(jBangHome_.getAbsolutePath(), "bin", "jbang.cmd").toString();
+            } else {
+                return Path.of(jBangHome_.getAbsolutePath(), "bin", "jbang").toString();
+            }
+        } else {
+            if (isWindows()) {
+                return "jbang.cmd";
+            } else {
+                return "jbang";
+            }
+        }
     }
 
 }

@@ -41,7 +41,7 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(LoggingExtension.class)
-@SuppressWarnings("PMD.AvoidDuplicateLiterals")
+@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.AvoidCatchingGenericException"})
 class JBangOperationTests {
     @SuppressWarnings("LoggerInitializedWithForeignClass")
     private static final Logger LOGGER = Logger.getLogger(JBangOperation.class.getName());
@@ -180,46 +180,24 @@ class JBangOperationTests {
     }
 
     @Nested
-    @DisplayName("Project Required Tests")
-    class ProjectRequiredTests {
+    @DisplayName("Work DirTests")
+    class WorkDirTests {
         @Test
-        void projectRequired() {
-            try {
-                new JBangOperation().execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.containsMessage("A project must be specified."));
-        }
-
-        @Test
-        void projectRequiredWithSilent() {
-            LOGGER.setLevel(Level.WARNING);
-            try {
-                new JBangOperation().silent(true).execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
-        }
-
-        @Test
-        void projectRequiredWithoutLogging() {
+        void workDiInvalidWithoutLogging() {
             LOGGER.setLevel(Level.OFF);
             try {
-                new JBangOperation().execute();
+                new JBangOperation()
+                        .fromProject(new BaseProject())
+                        .workDir("foo")
+                        .execute();
             } catch (Exception e) {
                 assertInstanceOf(ExitStatusException.class, e);
             }
             assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
-    }
 
-    @Nested
-    @DisplayName("WorkDir Required Tests")
-    class WorDirRequiredTests {
         @Test
-        void workDirRequired() {
+        void workDirInvalid() {
             try {
                 new JBangOperation()
                         .fromProject(new BaseProject())
@@ -232,7 +210,7 @@ class JBangOperationTests {
         }
 
         @Test
-        void workDirRequiredWithSilent() {
+        void workDirInvalidWithSilent() {
             try {
                 new JBangOperation()
                         .fromProject(new BaseProject())
@@ -246,13 +224,31 @@ class JBangOperationTests {
         }
 
         @Test
-        void workDirRequiredWithoutLogging() {
+        void workDirRequired() {
+            try {
+                new JBangOperation().execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.containsMessage("A work dir must be specified."));
+        }
+
+        @Test
+        void workDirWithSilent() {
+            LOGGER.setLevel(Level.WARNING);
+            try {
+                new JBangOperation().silent(true).execute();
+            } catch (Exception e) {
+                assertInstanceOf(ExitStatusException.class, e);
+            }
+            assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+
+        @Test
+        void workDirWithoutLogging() {
             LOGGER.setLevel(Level.OFF);
             try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .workDir("foo")
-                        .execute();
+                new JBangOperation().execute();
             } catch (Exception e) {
                 assertInstanceOf(ExitStatusException.class, e);
             }
@@ -531,7 +527,6 @@ class JBangOperationTests {
                         .fromProject(new BaseProject())
                         .jBangHome(foo);
                 assertEquals(foo.toFile(), op.jBangHome());
-
             }
 
             @Test
