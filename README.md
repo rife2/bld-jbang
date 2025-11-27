@@ -53,7 +53,7 @@ public void jbang() throws Exception {
     var op = new JBangOperation().fromProject(this);
     op.jBangArgs("trust", "add").jBangArgs(trusts).execute();
     op.reset();
-    op.script("https://github.com/jbangdev/jbang-examples/blob/main/examples/helloworld.javall").execute();
+    op.script("https://github.com/jbangdev/jbang-examples/blob/main/examples/helloworld.java").execute();
 }
 
 
