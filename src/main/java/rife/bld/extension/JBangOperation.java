@@ -39,8 +39,8 @@ import java.util.logging.Logger;
  */
 public class JBangOperation extends AbstractOperation<JBangOperation> {
     private static final Logger LOGGER = Logger.getLogger(JBangOperation.class.getName());
-    private final Collection<String> args_ = new ArrayList<>();
-    private final Collection<String> jBangArgs_ = new ArrayList<>();
+    private final List<String> args_ = new ArrayList<>();
+    private final List<String> jBangArgs_ = new ArrayList<>();
     private boolean exitOnFailure_ = true;
     private File jBangHome_;
     private String script_;
@@ -178,7 +178,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return a collection of arguments
      */
     @SuppressFBWarnings("EI_EXPOSE_REP")
-    public Collection<String> args() {
+    public List<String> args() {
         return args_;
     }
 
@@ -256,7 +256,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return a collection of script arguments
      */
     @SuppressFBWarnings("EI_EXPOSE_REP")
-    public Collection<String> jBangArgs() {
+    public List<String> jBangArgs() {
         return jBangArgs_;
     }
 
