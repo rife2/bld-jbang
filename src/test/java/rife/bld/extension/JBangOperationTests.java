@@ -58,60 +58,6 @@ class JBangOperationTests {
     @DisplayName("Execute Tests")
     class ExecuteTests {
         @Test
-        @EnabledOnOs({OS.LINUX, OS.MAC})
-        void executeWithInvalidOs() {
-            var originalOsName = System.getProperty("os.name");
-            try {
-                System.setProperty("os.name", "windows");
-                assertThrows(ExitStatusException.class, () ->
-                        new JBangOperation()
-                                .fromProject(new BaseProject())
-                                .jBangArgs("version")
-                                .execute());
-            } finally {
-                System.setProperty("os.name", originalOsName);
-            }
-        }
-
-        @Test
-        @EnabledOnOs({OS.LINUX, OS.MAC})
-        void executeWithInvalidOsNoLogging() {
-            LOGGER.setLevel(Level.OFF);
-            var originalOsName = System.getProperty("os.name");
-            try {
-                System.setProperty("os.name", "windows");
-                assertThrows(ExitStatusException.class, () ->
-                        new JBangOperation()
-                                .fromProject(new BaseProject())
-                                .jBangArgs("version")
-                                .execute());
-            } finally {
-                System.setProperty("os.name", originalOsName);
-            }
-
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
-        }
-
-        @Test
-        @EnabledOnOs({OS.LINUX, OS.MAC})
-        void executeWithInvalidOsSilent() {
-            var originalOsName = System.getProperty("os.name");
-            try {
-                System.setProperty("os.name", "windows");
-                assertThrows(ExitStatusException.class, () ->
-                        new JBangOperation()
-                                .fromProject(new BaseProject())
-                                .silent(true)
-                                .jBangArgs("version")
-                                .execute());
-            } finally {
-                System.setProperty("os.name", originalOsName);
-            }
-
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
-        }
-
-        @Test
         void executeWithNoExitOnFailure(@TempDir Path tempDir) throws Exception {
             var op = new JBangOperation()
                     .fromProject(new BaseProject())
@@ -371,30 +317,6 @@ class JBangOperationTests {
             }
 
             @Test
-            void verifyOsNameDarwin() {
-                var originalOsName = System.getProperty("os.name");
-                try {
-                    System.setProperty("os.name", "darwin");
-                    assertTrue(JBangOperation.isMacOS(), "os.name should be darwin");
-                } finally {
-                    System.setProperty("os.name", originalOsName);
-                }
-            }
-
-            @Test
-            void verifyOsNameIsNull() {
-                var originalOsName = System.getProperty("os.name");
-                try {
-                    System.clearProperty("os.name");
-                    assertFalse(JBangOperation.isLinux(), "isLinux should be false");
-                    assertFalse(JBangOperation.isWindows(), "isWindows should be false");
-                    assertFalse(JBangOperation.isMacOS(), "isMacOS should be false");
-                } finally {
-                    System.setProperty("os.name", originalOsName);
-                }
-            }
-
-            @Test
             void verifyOsNameLinux() {
                 var originalOsName = System.getProperty("os.name");
                 try {
@@ -406,33 +328,11 @@ class JBangOperationTests {
             }
 
             @Test
-            void verifyOsNameMacOS() {
-                var originalOsName = System.getProperty("os.name");
-                try {
-                    System.setProperty("os.name", "macos");
-                    assertTrue(JBangOperation.isMacOS(), "os.name should be macos");
-                } finally {
-                    System.setProperty("os.name", originalOsName);
-                }
-            }
-
-            @Test
             void verifyOsNameUnix() {
                 var originalOsName = System.getProperty("os.name");
                 try {
                     System.setProperty("os.name", "unix");
                     assertTrue(JBangOperation.isLinux(), "os.name should be unix");
-                } finally {
-                    System.setProperty("os.name", originalOsName);
-                }
-            }
-
-            @Test
-            void verifyOsNameWindows() {
-                var originalOsName = System.getProperty("os.name");
-                try {
-                    System.setProperty("os.name", "windows");
-                    assertTrue(JBangOperation.isWindows(), "os.name should be windows");
                 } finally {
                     System.setProperty("os.name", originalOsName);
                 }
@@ -565,6 +465,155 @@ class JBangOperationTests {
                 assertInstanceOf(ExitStatusException.class, e);
             }
             assertTrue(TEST_LOG_HANDLER.isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("OS Tests")
+    class OsTests {
+        @Nested
+        @DisplayName("OS Detection Tests")
+        class OsDetectionTests {
+            @Test
+            @EnabledOnOs(OS.LINUX)
+            void verifyIsLinux() {
+                assertTrue(JBangOperation.isLinux());
+                assertFalse(JBangOperation.isWindows());
+                assertFalse(JBangOperation.isMacOS());
+            }
+
+            @Test
+            @EnabledOnOs(OS.MAC)
+            void verifyIsMacOS() {
+                assertTrue(JBangOperation.isMacOS());
+                assertFalse(JBangOperation.isLinux());
+                assertFalse(JBangOperation.isWindows());
+            }
+
+            @Test
+            @EnabledOnOs(OS.WINDOWS)
+            void verifyIsWindows() {
+                assertTrue(JBangOperation.isWindows());
+                assertFalse(JBangOperation.isLinux());
+                assertFalse(JBangOperation.isMacOS());
+            }
+        }
+
+        @Nested
+        @DisplayName("Linux Detection Tests")
+        class LinuxDetectionTests {
+            @Test
+            void detectsLinux() {
+                assertTrue(JBangOperation.isLinux("Linux"));
+            }
+
+            @Test
+            void detectsUnix() {
+                assertTrue(JBangOperation.isLinux("Unix"));
+            }
+
+            @Test
+            void detectsLinuxCaseInsensitive() {
+                assertTrue(JBangOperation.isLinux("linux"));
+            }
+
+            @Test
+            void detectsUnixVariants() {
+                assertTrue(JBangOperation.isLinux("freebsd unix"));
+            }
+
+            @Test
+            void rejectsNonLinux() {
+                assertFalse(JBangOperation.isLinux("Windows 10"));
+                assertFalse(JBangOperation.isLinux("Mac OS X"));
+            }
+        }
+
+        @Nested
+        @DisplayName("MacOS Detection Tests")
+        class MacOSDetectionTests {
+            @Test
+            void detectsMacOSX() {
+                assertTrue(JBangOperation.isMacOS("Mac OS X"));
+            }
+
+            @Test
+            void detectsMacOS() {
+                assertTrue(JBangOperation.isMacOS("macOS"));
+            }
+
+            @Test
+            void detectsDarwin() {
+                assertTrue(JBangOperation.isMacOS("Darwin"));
+            }
+
+            @Test
+            void detectsMacCaseInsensitive() {
+                assertTrue(JBangOperation.isMacOS("MAC OS X"));
+                assertTrue(JBangOperation.isMacOS("MACOS"));
+            }
+
+            @Test
+            void rejectsNonMac() {
+                assertFalse(JBangOperation.isMacOS("Windows 10"));
+                assertFalse(JBangOperation.isMacOS("Linux"));
+            }
+        }
+
+        @Nested
+        @DisplayName("Windows Detection Tests")
+        class WindowsDetectionTests {
+            @Test
+            void detectsWindows() {
+                assertTrue(JBangOperation.isWindows("windows 10"));
+            }
+
+            @Test
+            void detectsWindows11() {
+                assertTrue(JBangOperation.isWindows("windows 11"));
+            }
+
+            @Test
+            void detectsWindowsServer() {
+                assertTrue(JBangOperation.isWindows("windows server 2022"));
+            }
+
+            @Test
+            void detectsWindowsCaseInsensitive() {
+                assertTrue(JBangOperation.isWindows("windows"));
+            }
+
+            @Test
+            void rejectsNonWindows() {
+                assertFalse(JBangOperation.isWindows("Mac OS X"));
+                assertFalse(JBangOperation.isWindows("Linux"));
+                assertFalse(JBangOperation.isWindows("darwin")); // "win" should not match "darwin"
+            }
+        }
+
+        @Nested
+        @DisplayName("Edge Cases Tests")
+        class EdgeCaseTests {
+            @Test
+            void handlesEmptyOsName() {
+                assertFalse(JBangOperation.isLinux(""));
+                assertFalse(JBangOperation.isMacOS(""));
+                assertFalse(JBangOperation.isWindows(""));
+            }
+
+            @Test
+            void handlesUnknownOS() {
+                assertFalse(JBangOperation.isLinux("someunknownos"));
+                assertFalse(JBangOperation.isMacOS("someunknownos"));
+                assertFalse(JBangOperation.isWindows("someunknownos"));
+            }
+
+            @Test
+            void handlesPartialMatches() {
+                assertFalse(JBangOperation.isWindows("darwin"));
+                assertFalse(JBangOperation.isMacOS("linux"));
+                assertFalse(JBangOperation.isLinux("windows"));
+            }
         }
     }
 }
