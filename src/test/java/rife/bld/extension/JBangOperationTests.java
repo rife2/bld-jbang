@@ -25,9 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import rife.bld.BaseProject;
-import rife.bld.extension.testing.EnabledOnCi;
-import rife.bld.extension.testing.LoggingExtension;
-import rife.bld.extension.testing.TestLogHandler;
+import rife.bld.extension.testing.*;
 import rife.bld.operations.exceptions.ExitStatusException;
 
 import java.io.File;
@@ -41,6 +39,7 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(LoggingExtension.class)
+@ExtendWith(RandomStringResolver.class)
 @SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.AvoidCatchingGenericException"})
 class JBangOperationTests {
     @SuppressWarnings("LoggerInitializedWithForeignClass")
@@ -207,12 +206,12 @@ class JBangOperationTests {
         @DisplayName("Args Tests")
         class ArgsTests {
             @Test
-            void verifyArgs() {
-                var args = List.of("foo", "bar");
+            @RandomString(size = 2)
+            void verifyArgs(List<String> args) {
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
                         .args(args);
-                assertEquals(2, op.args().size());
+                assertEquals(op.args().size(), args.size());
                 assertTrue(op.args().containsAll(args));
             }
 
@@ -272,8 +271,8 @@ class JBangOperationTests {
             }
 
             @Test
-            void verifyJBangArgs() {
-                var args = List.of("foo", "bar");
+            @RandomString(size = 2)
+            void verifyJBangArgs(List<String> args) {
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
                         .jBangArgs(args);
