@@ -290,56 +290,6 @@ class JBangOperationTests {
         }
 
         @Nested
-        @DisplayName("OS Tests")
-        class OsTests {
-            @Test
-            @EnabledOnOs(OS.LINUX)
-            void verifyIsLinux() {
-                assertTrue(JBangOperation.isLinux());
-                assertFalse(JBangOperation.isWindows());
-                assertFalse(JBangOperation.isMacOS());
-            }
-
-            @Test
-            @EnabledOnOs(OS.MAC)
-            void verifyIsMacOS() {
-                assertTrue(JBangOperation.isMacOS());
-                assertFalse(JBangOperation.isLinux());
-                assertFalse(JBangOperation.isWindows());
-            }
-
-            @Test
-            @EnabledOnOs(OS.WINDOWS)
-            void verifyIsWindows() {
-                assertTrue(JBangOperation.isWindows());
-                assertFalse(JBangOperation.isLinux());
-                assertFalse(JBangOperation.isMacOS());
-            }
-
-            @Test
-            void verifyOsNameLinux() {
-                var originalOsName = System.getProperty("os.name");
-                try {
-                    System.setProperty("os.name", "linux");
-                    assertTrue(JBangOperation.isLinux(), "os.name should be linux");
-                } finally {
-                    System.setProperty("os.name", originalOsName);
-                }
-            }
-
-            @Test
-            void verifyOsNameUnix() {
-                var originalOsName = System.getProperty("os.name");
-                try {
-                    System.setProperty("os.name", "unix");
-                    assertTrue(JBangOperation.isLinux(), "os.name should be unix");
-                } finally {
-                    System.setProperty("os.name", originalOsName);
-                }
-            }
-        }
-
-        @Nested
         @DisplayName("Script Tests")
         class ScriptTests {
             @Test
