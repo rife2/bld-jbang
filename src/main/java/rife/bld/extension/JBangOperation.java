@@ -118,16 +118,25 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is AIX.
      *
-     * @return {@code true} if the operating system is identified as AIX, {@code false} otherwise.
+     * @return {@code true} if the operating system is identified as AIX, {@code false} otherwise
      */
     public static boolean isAix() {
         return SystemUtils.isAix();
     }
 
     /**
+     * Determines if the current operating system is Cygwin.
+     *
+     * @return {@code true} if the operating system is identified as Cygwin, {@code false} otherwise
+     */
+    public static boolean isCygwin() {
+        return SystemUtils.isCygwin();
+    }
+
+    /**
      * Determines if the current operating system is FreeBSD.
      *
-     * @return true if the operating system is FreeBSD, false otherwise.
+     * @return {@code true} if the operating system is FreeBSD, {@code false} otherwise
      */
     public static boolean isFreeBsd() {
         return SystemUtils.isFreeBsd();
@@ -136,7 +145,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the operating system is Linux.
      *
-     * @return true if the operating system is Linux, false otherwise.
+     * @return {@code true} if the operating system is Linux, {@code false} otherwise
      */
     public static boolean isLinux() {
         return SystemUtils.isLinux();
@@ -145,16 +154,25 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is macOS.
      *
-     * @return true if the OS is macOS, false otherwise.
+     * @return {@code true} if the OS is macOS, {@code false} otherwise
      */
     public static boolean isMacOS() {
         return SystemUtils.isMacOS();
     }
 
     /**
+     * Determines if the current operating system is MinGW.
+     *
+     * @return {@code true} if the operating system is identified as MinGW, {@code false} otherwise
+     */
+    public static boolean isMingw() {
+        return SystemUtils.isMingw();
+    }
+
+    /**
      * Determines if the current operating system is OpenVMS.
      *
-     * @return true if the operating system is OpenVMS, false otherwise.
+     * @return {@code true} if the operating system is OpenVMS, {@code false} otherwise
      */
     public static boolean isOpenVms() {
         return SystemUtils.isOpenVms();
@@ -163,7 +181,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is Solaris.
      *
-     * @return true if the operating system is Solaris, false otherwise.
+     * @return {@code true} if the operating system is Solaris, {@code false} otherwise
      */
     public static boolean isSolaris() {
         return SystemUtils.isSolaris();
@@ -172,7 +190,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is Windows.
      *
-     * @return true if the operating system is Windows, false otherwise.
+     * @return {@code true} if the operating system is Windows, {@code false} otherwise
      */
     public static boolean isWindows() {
         return SystemUtils.isWindows();

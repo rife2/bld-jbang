@@ -351,6 +351,11 @@ class JBangOperationTests {
         }
 
         @Test
+        void verifyIsCygwin() {
+            assertSame(SystemUtils.isCygwin(), JBangOperation.isCygwin());
+        }
+
+        @Test
         void verifyIsFreeBsd() {
             assertSame(SystemUtils.isFreeBsd(), JBangOperation.isFreeBsd());
         }
@@ -363,6 +368,11 @@ class JBangOperationTests {
         @Test
         void verifyIsMacOS() {
             assertSame(SystemUtils.isMacOS(), JBangOperation.isMacOS());
+        }
+
+        @Test
+        void verifyIsMingw() {
+            assertSame(SystemUtils.isMingw(), JBangOperation.isMingw());
         }
 
         @Test
