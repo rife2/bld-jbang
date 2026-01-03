@@ -34,7 +34,7 @@ public class JBangOperationBuild extends Project {
         pkg = "rife.bld.extension";
         name = "JBang";
         archiveBaseName = "bld-jbang";
-        version = version(0, 9, 1, "SNAPSHOT");
+        version = version(1, 0, 0, "SNAPSHOT");
 
         javaRelease = 17;
 
