@@ -43,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(RandomStringResolver.class)
 @SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.AvoidCatchingGenericException"})
 class JBangOperationTests {
+
     @SuppressWarnings("LoggerInitializedWithForeignClass")
     private static final Logger LOGGER = Logger.getLogger(JBangOperation.class.getName());
     private static final TestLogHandler TEST_LOG_HANDLER = new TestLogHandler();
@@ -58,6 +59,7 @@ class JBangOperationTests {
     @Nested
     @DisplayName("Execute Tests")
     class ExecuteTests {
+
         @Test
         void executeWithNoExitOnFailure(@TempDir Path tempDir) throws Exception {
             var op = new JBangOperation()
@@ -128,6 +130,7 @@ class JBangOperationTests {
     @Nested
     @DisplayName("Options Tests")
     class Options {
+
         @Test
         void verifyReset() {
             var op = new JBangOperation()
@@ -152,6 +155,7 @@ class JBangOperationTests {
         @Nested
         @DisplayName("Args Tests")
         class ArgsTests {
+
             @Test
             @RandomString(size = 2)
             void verifyArgs(List<String> args) {
@@ -184,6 +188,7 @@ class JBangOperationTests {
         @Nested
         @DisplayName("ExitOnFailure Tests")
         class ExitOnFailureTests {
+
             @Test
             void verifyExitOnFailure() {
                 var op = new JBangOperation();
@@ -209,6 +214,7 @@ class JBangOperationTests {
         @Nested
         @DisplayName("JBangArgs Tests")
         class JBangArgsTests {
+
             @Test
             void verifyEmptyJBangArgsList() {
                 var op = new JBangOperation()
@@ -240,6 +246,7 @@ class JBangOperationTests {
         @Nested
         @DisplayName("JBangHome Tests")
         class JBangHomeTest {
+
             @Test
             void executeWithInvalidJBangHome() {
                 var op = new JBangOperation()
@@ -257,6 +264,14 @@ class JBangOperationTests {
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
                         .jBangHome(Path.of(System.getenv("HOME"), ".jbang"))
+                        .jBangArgs("version");
+                assertDoesNotThrow(op::execute);
+            }
+
+            @Test
+            void executeWithNullJBangHome() {
+                var op = new JBangOperation()
+                        .workDir(".")
                         .jBangArgs("version");
                 assertDoesNotThrow(op::execute);
             }
@@ -293,6 +308,7 @@ class JBangOperationTests {
         @Nested
         @DisplayName("Script Tests")
         class ScriptTests {
+
             @Test
             void executeWithMissingScript() {
                 var op = new JBangOperation()
@@ -315,6 +331,7 @@ class JBangOperationTests {
         @Nested
         @DisplayName("WorkDir Tests")
         class WorkDirTest {
+
             @Test
             void verifyWorkDir() {
                 var project = new BaseProject();
@@ -345,6 +362,7 @@ class JBangOperationTests {
     @Nested
     @DisplayName("OS Detection Tests")
     class OsDetectionTests {
+
         @Test
         void verifyIsAix() {
             assertSame(SystemUtils.isAix(), JBangOperation.isAix());
@@ -394,6 +412,7 @@ class JBangOperationTests {
     @Nested
     @DisplayName("Work DirTests")
     class WorkDirTests {
+
         @Test
         void workDiInvalidWithoutLogging() {
             LOGGER.setLevel(Level.OFF);

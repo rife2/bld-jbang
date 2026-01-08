@@ -38,6 +38,7 @@ import java.util.logging.Logger;
  * @since 1.0
  */
 public class JBangOperation extends AbstractOperation<JBangOperation> {
+
     private static final Logger LOGGER = Logger.getLogger(JBangOperation.class.getName());
     private final List<String> args_ = new ArrayList<>();
     private final List<String> jBangArgs_ = new ArrayList<>();
@@ -422,19 +423,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     private String findJBangExec() {
-        if (jBangHome_ != null) {
-            if (isWindows()) {
-                return Path.of(jBangHome_.getAbsolutePath(), "bin", "jbang.cmd").toString();
-            } else {
-                return Path.of(jBangHome_.getAbsolutePath(), "bin", "jbang").toString();
-            }
-        } else {
-            if (isWindows()) {
-                return "jbang.cmd";
-            } else {
-                return "jbang";
-            }
-        }
-    }
+        var jbang = isWindows() ? "jbang.cmd" : "jbang";
 
+        if (jBangHome_ == null) {
+            return jbang;
+        }
+
+        return Path.of(jBangHome_.getAbsolutePath(), "bin", jbang).toString();
+    }
 }
