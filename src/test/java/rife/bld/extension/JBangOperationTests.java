@@ -26,7 +26,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import rife.bld.BaseProject;
 import rife.bld.extension.testing.*;
-import rife.bld.extension.tools.SystemUtils;
+import rife.bld.extension.tools.SystemTools;
 import rife.bld.operations.exceptions.ExitStatusException;
 
 import java.io.File;
@@ -365,47 +365,47 @@ class JBangOperationTests {
 
         @Test
         void verifyIsAix() {
-            assertSame(SystemUtils.isAix(), JBangOperation.isAix());
+            assertSame(SystemTools.isAix(), JBangOperation.isAix());
         }
 
         @Test
         void verifyIsCygwin() {
-            assertSame(SystemUtils.isCygwin(), JBangOperation.isCygwin());
+            assertSame(SystemTools.isCygwin(), JBangOperation.isCygwin());
         }
 
         @Test
         void verifyIsFreeBsd() {
-            assertSame(SystemUtils.isFreeBsd(), JBangOperation.isFreeBsd());
+            assertSame(SystemTools.isFreeBsd(), JBangOperation.isFreeBsd());
         }
 
         @Test
         void verifyIsLinux() {
-            assertSame(SystemUtils.isLinux(), JBangOperation.isLinux());
+            assertSame(SystemTools.isLinux(), JBangOperation.isLinux());
         }
 
         @Test
         void verifyIsMacOS() {
-            assertSame(SystemUtils.isMacOS(), JBangOperation.isMacOS());
+            assertSame(SystemTools.isMacOS(), JBangOperation.isMacOS());
         }
 
         @Test
         void verifyIsMingw() {
-            assertSame(SystemUtils.isMingw(), JBangOperation.isMingw());
+            assertSame(SystemTools.isMingw(), JBangOperation.isMingw());
         }
 
         @Test
         void verifyIsOpenVms() {
-            assertSame(SystemUtils.isOpenVms(), JBangOperation.isOpenVms());
+            assertSame(SystemTools.isOpenVms(), JBangOperation.isOpenVms());
         }
 
         @Test
         void verifyIsSolaris() {
-            assertSame(SystemUtils.isSolaris(), JBangOperation.isSolaris());
+            assertSame(SystemTools.isSolaris(), JBangOperation.isSolaris());
         }
 
         @Test
         void verifyIsWindows() {
-            assertSame(SystemUtils.isWindows(), JBangOperation.isWindows());
+            assertSame(SystemTools.isWindows(), JBangOperation.isWindows());
         }
     }
 

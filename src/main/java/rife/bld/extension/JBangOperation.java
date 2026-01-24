@@ -18,7 +18,8 @@ package rife.bld.extension;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import rife.bld.BaseProject;
-import rife.bld.extension.tools.SystemUtils;
+import rife.bld.extension.tools.ObjectTools;
+import rife.bld.extension.tools.SystemTools;
 import rife.bld.operations.AbstractOperation;
 import rife.bld.operations.exceptions.ExitStatusException;
 
@@ -122,7 +123,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is identified as AIX, {@code false} otherwise
      */
     public static boolean isAix() {
-        return SystemUtils.isAix();
+        return SystemTools.isAix();
     }
 
     /**
@@ -131,7 +132,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is identified as Cygwin, {@code false} otherwise
      */
     public static boolean isCygwin() {
-        return SystemUtils.isCygwin();
+        return SystemTools.isCygwin();
     }
 
     /**
@@ -140,7 +141,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is FreeBSD, {@code false} otherwise
      */
     public static boolean isFreeBsd() {
-        return SystemUtils.isFreeBsd();
+        return SystemTools.isFreeBsd();
     }
 
     /**
@@ -149,7 +150,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is Linux, {@code false} otherwise
      */
     public static boolean isLinux() {
-        return SystemUtils.isLinux();
+        return SystemTools.isLinux();
     }
 
     /**
@@ -158,7 +159,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the OS is macOS, {@code false} otherwise
      */
     public static boolean isMacOS() {
-        return SystemUtils.isMacOS();
+        return SystemTools.isMacOS();
     }
 
     /**
@@ -167,7 +168,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is identified as MinGW, {@code false} otherwise
      */
     public static boolean isMingw() {
-        return SystemUtils.isMingw();
+        return SystemTools.isMingw();
     }
 
     /**
@@ -176,7 +177,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is OpenVMS, {@code false} otherwise
      */
     public static boolean isOpenVms() {
-        return SystemUtils.isOpenVms();
+        return SystemTools.isOpenVms();
     }
 
     /**
@@ -185,7 +186,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is Solaris, {@code false} otherwise
      */
     public static boolean isSolaris() {
-        return SystemUtils.isSolaris();
+        return SystemTools.isSolaris();
     }
 
     /**
@@ -194,7 +195,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return {@code true} if the operating system is Windows, {@code false} otherwise
      */
     public static boolean isWindows() {
-        return SystemUtils.isWindows();
+        return SystemTools.isWindows();
     }
 
     /**
@@ -204,7 +205,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation args(Collection<String> args) {
-        this.args_.addAll(args);
+        if (ObjectTools.isNotEmpty(args)) {
+            args_.addAll(args);
+        }
         return this;
     }
 
@@ -215,7 +218,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation args(String... args) {
-        this.args_.addAll(List.of(args));
+        if (ObjectTools.isNotEmpty(args)) {
+            args_.addAll(List.of(args));
+        }
         return this;
     }
 
@@ -238,7 +243,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation exitOnFailure(boolean exitOnFailure) {
-        this.exitOnFailure_ = exitOnFailure;
+        exitOnFailure_ = exitOnFailure;
         return this;
     }
 
@@ -282,7 +287,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation jBangArgs(Collection<String> jBangArgs) {
-        this.jBangArgs_.addAll(jBangArgs);
+        if (ObjectTools.isNotEmpty(jBangArgs)) {
+            jBangArgs_.addAll(jBangArgs);
+        }
         return this;
     }
 
@@ -293,7 +300,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation jBangArgs(String... jBangArgs) {
-        this.jBangArgs_.addAll(List.of(jBangArgs));
+        if (ObjectTools.isNotEmpty(jBangArgs)) {
+            jBangArgs_.addAll(List.of(jBangArgs));
+        }
         return this;
     }
 
@@ -324,7 +333,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation jBangHome(File jBangHome) {
-        this.jBangHome_ = jBangHome;
+        jBangHome_ = jBangHome;
         return this;
     }
 
@@ -368,7 +377,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      */
     public JBangOperation script(String script) {
-        this.script_ = script;
+        script_ = script;
         return this;
     }
 
