@@ -40,7 +40,6 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(LoggingExtension.class)
-@ExtendWith(RandomStringResolver.class)
 @SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.AvoidCatchingGenericException"})
 class JBangOperationTests {
 
