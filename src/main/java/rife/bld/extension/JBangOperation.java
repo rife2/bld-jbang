@@ -31,6 +31,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  * Run JBang with the specified arguments.
@@ -78,7 +79,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
         }
         shellCommandArgs.addAll(args_);
 
-        var jBandCommand = String.join(" ", shellCommandArgs);
+        var jBandCommand = shellCommandArgs.stream()
+                .map(JBangOperation::quoteArg)
+                .collect(Collectors.joining(" "));
+
         if (LOGGER.isLoggable(Level.INFO) && !silent()) {
             LOGGER.info(jBandCommand);
         }
