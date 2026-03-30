@@ -18,6 +18,7 @@ package rife.bld.extension;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import rife.bld.BaseProject;
+import rife.bld.extension.tools.CollectionTools;
 import rife.bld.extension.tools.ObjectTools;
 import rife.bld.extension.tools.SystemTools;
 import rife.bld.operations.AbstractOperation;
@@ -233,10 +234,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @param args the arguments to use in the script
      * @return this operation instance
      */
-    public JBangOperation args(Collection<String> args) {
-        if (ObjectTools.isNotEmpty(args)) {
-            args_.addAll(args);
-        }
+    @SafeVarargs
+    public final JBangOperation args(Collection<String>... args) {
+        args_.addAll(CollectionTools.combine(args));
         return this;
     }
 
@@ -312,13 +312,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Sets the arguments to be used when running the {@link #script(String) script}
      *
-     * @param jBangArgs the arguments to use when running the script
+     * @param args the arguments to use when running the script
      * @return this operation instance
      */
-    public JBangOperation jBangArgs(Collection<String> jBangArgs) {
-        if (ObjectTools.isNotEmpty(jBangArgs)) {
-            jBangArgs_.addAll(jBangArgs);
-        }
+    @SafeVarargs
+    public final JBangOperation jBangArgs(Collection<String>... args) {
+        jBangArgs_.addAll(CollectionTools.combine(args));
         return this;
     }
 
