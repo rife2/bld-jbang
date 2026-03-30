@@ -55,7 +55,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws Exception if an error occurs
      */
     @Override
-    @SuppressWarnings({"PMD.PreserveStackTrace", "PMD.AvoidCatchingGenericException"})
+    @SuppressWarnings({"PMD.PreserveStackTrace"})
     @SuppressFBWarnings({"COMMAND_INJECTION", "LEST_LOST_EXCEPTION_STACK_TRACE"})
     public void execute() throws Exception {
         if (workDir_ == null) {
@@ -95,14 +95,21 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
             pb.command(shellCommand);
             pb.directory(workDir_);
 
+            @SuppressWarnings("PMD.CloseResource")
             var proc = pb.start();
-            proc.waitFor();
-            if (exitOnFailure_) {
-                ExitStatusException.throwOnFailure(proc.exitValue());
+            try {
+                proc.waitFor();
+                if (exitOnFailure_) {
+                    ExitStatusException.throwOnFailure(proc.exitValue());
+                }
+            } finally {
+                if (proc.isAlive()) {
+                  proc.destroyForcibly();
+                }
             }
-        } catch (Error | IOException | InterruptedException e) {
+        } catch (IOException | InterruptedException e) {
             if (LOGGER.isLoggable(Level.SEVERE) && !silent()) {
-                LOGGER.severe(e.getLocalizedMessage());
+                LOGGER.log(Level.SEVERE, e.getLocalizedMessage(), e);
             }
             throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
         }

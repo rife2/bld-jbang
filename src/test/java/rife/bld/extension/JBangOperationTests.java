@@ -25,7 +25,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import rife.bld.BaseProject;
-import rife.bld.extension.testing.*;
+import rife.bld.extension.testing.EnabledOnCi;
+import rife.bld.extension.testing.LoggingExtension;
+import rife.bld.extension.testing.RandomString;
+import rife.bld.extension.testing.TestLogHandler;
 import rife.bld.extension.tools.SystemTools;
 import rife.bld.operations.exceptions.ExitStatusException;
 
@@ -40,7 +43,7 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(LoggingExtension.class)
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "PMD.AvoidCatchingGenericException"})
+@SuppressWarnings("PMD.AvoidDuplicateLiterals")
 class JBangOperationTests {
 
     @SuppressWarnings("LoggerInitializedWithForeignClass")
@@ -75,31 +78,25 @@ class JBangOperationTests {
         }
 
         @Test
-        void executeWithSilent() {
-            try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .silent(true)
-                        .jBangArgs("version")
-                        .execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+        void executeWithSilent() throws Exception {
+            new JBangOperation()
+                    .fromProject(new BaseProject())
+                    .silent(true)
+                    .jBangArgs("version")
+                    .execute();
+
             assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
 
         @Test
-        void executeWithSuppressAllLogs() {
+        void executeWithSuppressAllLogs() throws Exception {
             LOGGER.setLevel(Level.OFF);
-            var op = new JBangOperation()
+
+            new JBangOperation()
                     .fromProject(new BaseProject())
                     .silent(true)
-                    .jBangArgs("version");
-            try {
-                op.execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+                    .jBangArgs("version")
+                    .execute();
             assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
 
@@ -415,73 +412,53 @@ class JBangOperationTests {
         @Test
         void workDiInvalidWithoutLogging() {
             LOGGER.setLevel(Level.OFF);
-            try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .workDir("foo")
-                        .execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+
+            assertThrows(ExitStatusException.class, () ->
+                    new JBangOperation()
+                            .fromProject(new BaseProject())
+                            .workDir("foo")
+                            .execute());
             assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
 
         @Test
         void workDirInvalid() {
-            try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .workDir("foo")
-                        .execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+            assertThrows(ExitStatusException.class, () ->
+                    new JBangOperation()
+                            .fromProject(new BaseProject())
+                            .workDir("foo")
+                            .execute());
             assertTrue(TEST_LOG_HANDLER.containsMessage("Invalid working directory"));
         }
 
         @Test
         void workDirInvalidWithSilent() {
-            try {
-                new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .workDir("foo")
-                        .silent(true)
-                        .execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+            assertThrows(ExitStatusException.class, () ->
+                    new JBangOperation()
+                            .fromProject(new BaseProject())
+                            .workDir("foo")
+                            .silent(true)
+                            .execute());
             assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
 
         @Test
         void workDirRequired() {
-            try {
-                new JBangOperation().execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+            assertThrows(ExitStatusException.class, () -> new JBangOperation().execute());
             assertTrue(TEST_LOG_HANDLER.containsMessage("A work dir must be specified."));
         }
 
         @Test
         void workDirWithSilent() {
             LOGGER.setLevel(Level.WARNING);
-            try {
-                new JBangOperation().silent(true).execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+            assertThrows(ExitStatusException.class, () -> new JBangOperation().silent(true).execute());
             assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
 
         @Test
         void workDirWithoutLogging() {
             LOGGER.setLevel(Level.OFF);
-            try {
-                new JBangOperation().execute();
-            } catch (Exception e) {
-                assertInstanceOf(ExitStatusException.class, e);
-            }
+            assertThrows(ExitStatusException.class, () -> new JBangOperation().execute());
             assertTrue(TEST_LOG_HANDLER.isEmpty());
         }
     }
