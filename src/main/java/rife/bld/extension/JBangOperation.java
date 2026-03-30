@@ -199,6 +199,24 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
+     * Quotes a single command-line argument for safe use in a shell-interpreted command string.
+     * <p>
+     * On Windows, wraps the argument in double quotes and escapes any internal double quotes.
+     * On Unix, wraps the argument in single quotes and escapes any internal single quotes using
+     * the POSIX {@code '\''} idiom. This guards against arguments containing spaces or shell
+     * metacharacters when the command is passed to {@code cmd.exe /c} or {@code sh -c}.
+     *
+     * @param arg the argument to quote
+     * @return the quoted argument
+     */
+    static String quoteArg(String arg) {
+        if (isWindows()) {
+            return "\"" + arg.replace("\"", "\\\"") + "\"";
+        }
+        return "'" + arg.replace("'", "'\\''") + "'";
+    }
+
+    /**
      * Sets the arguments to be used in the {@link #script(String) script}.
      *
      * @param args the arguments to use in the script
