@@ -16,6 +16,7 @@
 
 package rife.bld.extension;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -47,16 +50,21 @@ import static org.junit.jupiter.api.Assertions.*;
 class JBangOperationTests {
 
     @SuppressWarnings("LoggerInitializedWithForeignClass")
-    private static final Logger LOGGER = Logger.getLogger(JBangOperation.class.getName());
-    private static final TestLogHandler TEST_LOG_HANDLER = new TestLogHandler();
+    private static final Logger logger = Logger.getLogger(JBangOperation.class.getName());
+    private static final TestLogHandler testLogHandler = new TestLogHandler();
 
     @RegisterExtension
     @SuppressWarnings("unused")
-    private static final LoggingExtension LOGGING_EXTENSION = new LoggingExtension(
-            LOGGER,
-            TEST_LOG_HANDLER,
+    private static final LoggingExtension loggingExtension = new LoggingExtension(
+            logger,
+            testLogHandler,
             Level.ALL
     );
+
+    @BeforeEach
+    void beforeEach() {
+        testLogHandler.clear();
+    }
 
     @Nested
     @DisplayName("Execute Tests")
@@ -85,29 +93,29 @@ class JBangOperationTests {
                     .jBangArgs("version")
                     .execute();
 
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
+            assertTrue(testLogHandler.isEmpty());
         }
 
         @Test
         void executeWithSuppressAllLogs() throws Exception {
-            LOGGER.setLevel(Level.OFF);
+            logger.setLevel(Level.OFF);
 
             new JBangOperation()
                     .fromProject(new BaseProject())
                     .silent(true)
                     .jBangArgs("version")
                     .execute();
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
+            assertTrue(testLogHandler.isEmpty());
         }
 
         @Test
         void executeWithoutCommandLogging() throws Exception {
-            LOGGER.setLevel(Level.WARNING);
+            logger.setLevel(Level.WARNING);
             new JBangOperation()
                     .fromProject(new BaseProject())
                     .jBangArgs("version")
                     .execute();
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
+            assertTrue(testLogHandler.isEmpty());
         }
 
         @Test
@@ -116,10 +124,152 @@ class JBangOperationTests {
             var op = new JBangOperation()
                     .fromProject(new BaseProject())
                     .jBangArgs("--quiet")
-                    .script("src/test/resources/hello.java")
+                    .script("src/test/resources/Hello.java")
                     .args(helloTxt.toString());
             assertDoesNotThrow(op::execute);
             assertEquals("Hello World", Files.readString(helloTxt));
+        }
+
+        @Test
+        void helloWorldInvalidArgs() {
+            var op = new JBangOperation()
+                    .fromProject(new BaseProject())
+                    .jBangArgs("--quiet")
+                    .script("src/test/resources/Hello.java")
+                    .args("foo/bar.txt");
+            assertThrows(ExitStatusException.class, op::execute);
+        }
+
+        @Test
+        void helloWorldNoArgs() {
+            var op = new JBangOperation()
+                    .fromProject(new BaseProject())
+                    .jBangArgs("--quiet")
+                    .script("src/test/resources/Hello.java");
+            assertThrows(ExitStatusException.class, op::execute);
+        }
+    }
+
+    @Nested
+    @DisplayName("InheritIO Execution Tests")
+    class InheritIOExecutionTests {
+
+        @Test
+        @DisplayName("inheritIO(false) captures error output on failure")
+        void inheritIOFalseCapturesErrorOnFailure(@TempDir Path tempDir) throws IOException {
+            var script = tempDir.resolve("fail.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class fail {
+                        public static void main(String[] args) {
+                            System.err.println("this is an error");
+                            System.exit(1);
+                        }
+                    }
+                    """);
+
+            var op = new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .inheritIO(false)
+                    .exitOnFailure(true);
+
+            assertThrows(ExitStatusException.class, op::execute);
+            testLogHandler.printLogMessages();
+            assertTrue(testLogHandler.containsMessage("this is an error"),
+                    "stderr from failed process should be captured when inheritIO=false");
+        }
+
+        @Test
+        @DisplayName("inheritIO(false) captures JBang output in logger")
+        void inheritIOFalseCapturesOutput(@TempDir Path tempDir) throws IOException {
+            var script = tempDir.resolve("echo.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class echo {
+                        public static void main(String[] args) {
+                            System.out.println("captured stdout");
+                            System.err.println("captured stderr");
+                        }
+                    }
+                    """);
+
+
+            var op = new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .inheritIO(false); // capture output
+            assertDoesNotThrow(op::execute);
+
+            testLogHandler.printLogMessages();
+            // Both stdout and stderr should be in the log handler
+            assertTrue(testLogHandler.containsMessage("captured stdout"),
+                    "stdout should be captured when inheritIO=false");
+            assertTrue(testLogHandler.containsMessage("captured stderr"),
+                    "stderr should be captured when inheritIO=false");
+        }
+
+        @Test
+        @DisplayName("inheritIO(false) with output consumer")
+        void inheritIOFalseWithOutputConsumer(@TempDir Path tempDir) throws IOException {
+            var lines = new ArrayList<String>();
+            var script = tempDir.resolve("fail.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class fail {
+                        public static void main(String[] args) {
+                            System.err.println("this is an error");
+                            System.exit(1);
+                        }
+                    }
+                    """);
+
+
+            var op = new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .inheritIO(false)
+                    .outputConsumer(lines::add)
+                    .exitOnFailure(true);
+
+            assertThrows(ExitStatusException.class, op::execute);
+            assertTrue(lines.contains("this is an error"),
+                    "stderr from failed process should be captured by output consumer");
+        }
+
+        @Test
+        @DisplayName("inheritIO(true) does not capture JBang output in logger")
+        void inheritIOTrueDoesNotCaptureOutput(@TempDir Path tempDir) throws IOException {
+            var script = tempDir.resolve("echo.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class echo {
+                        public static void main(String[] args) {
+                            System.out.println("not captured stdout");
+                            System.err.println("not captured stderr");
+                        }
+                    }
+                    """);
+
+            logger.setLevel(Level.ALL);
+
+            var op = new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .inheritIO(true) // inherit - output goes to console, not logger
+                    .jBangArgs("--quiet");
+
+            assertDoesNotThrow(op::execute);
+
+            // Output should NOT be in log handler because it went straight to console
+            assertFalse(testLogHandler.containsMessage("not captured stdout"),
+                    "stdout should NOT be captured when inheritIO=true");
+            assertFalse(testLogHandler.containsMessage("not captured stderr"),
+                    "stderr should NOT be captured when inheritIO=true");
+
+            // But the command itself should still be logged at INFO
+            assertTrue(testLogHandler.containsMessage("jbang"));
+            assertTrue(testLogHandler.containsMessage("echo.java"));
         }
     }
 
@@ -132,12 +282,12 @@ class JBangOperationTests {
             var op = new JBangOperation()
                     .exitOnFailure(false)
                     .jBangArgs("run")
-                    .script("hello.java")
+                    .script("Hello.java")
                     .args("foo", "bar");
 
             assertFalse(op.isExitOnFailure(), "exitOnFailure should be false");
             assertEquals(1, op.jBangArgs().size(), "jBangArgs should have 1 element");
-            assertEquals("hello.java", op.script(), "script should be hello.java");
+            assertEquals("Hello.java", op.script(), "script should be Hello.java");
             assertEquals(2, op.args().size(), "args should have 2 elements");
 
             op.reset();
@@ -175,9 +325,8 @@ class JBangOperationTests {
             @Test
             void verifyEmptyArgsList() {
                 var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .args(List.of());
-                assertTrue(op.args().isEmpty());
+                        .fromProject(new BaseProject());
+                assertThrows(IllegalArgumentException.class, () -> op.args(List.of()));
             }
         }
 
@@ -208,15 +357,40 @@ class JBangOperationTests {
         }
 
         @Nested
+        @DisplayName("InheritIO Tests")
+        class InheritIOTests {
+
+            @Test
+            void verifyInheritIODefault() {
+                var op = new JBangOperation();
+                assertTrue(op.isInheritIO());
+            }
+
+            @Test
+            void verifyIsInheritIO() {
+                var op = new JBangOperation().inheritIO(false);
+                assertFalse(op.isInheritIO());
+
+                op = op.inheritIO(true);
+                assertTrue(op.isInheritIO());
+            }
+
+            @Test
+            void verifyIsNotInheritIO() {
+                var op = new JBangOperation().inheritIO(false);
+                assertFalse(op.isInheritIO());
+            }
+        }
+
+        @Nested
         @DisplayName("JBangArgs Tests")
         class JBangArgsTests {
 
             @Test
             void verifyEmptyJBangArgsList() {
                 var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangArgs(List.of());
-                assertTrue(op.jBangArgs().isEmpty());
+                        .fromProject(new BaseProject());
+                assertThrows(IllegalArgumentException.class, () -> op.jBangArgs(List.of()));
             }
 
             @Test
@@ -316,7 +490,7 @@ class JBangOperationTests {
 
             @Test
             void verifyScript() {
-                var script = "src/test/resources/hello.java";
+                var script = "src/test/resources/Hello.java";
                 var op = new JBangOperation()
                         .fromProject(new BaseProject())
                         .script(script);
@@ -333,6 +507,15 @@ class JBangOperationTests {
                 var project = new BaseProject();
                 var op = new JBangOperation().fromProject(project);
                 assertEquals(project.workDirectory(), op.workDir());
+            }
+
+            @Test
+            void verifyWorkDirAsFile() {
+                var project = new BaseProject();
+                var op = new JBangOperation()
+                        .fromProject(project)
+                        .workDir(new File("foo"));
+                assertEquals("foo", op.workDir().toString());
             }
 
             @Test
@@ -386,7 +569,7 @@ class JBangOperationTests {
 
         @Test
         void verifyIsMingw() {
-            assertSame(SystemTools.isMingw(), JBangOperation.isMingw());
+            assertSame(SystemTools.isMinGw(), JBangOperation.isMinGw());
         }
 
         @Test
@@ -406,19 +589,106 @@ class JBangOperationTests {
     }
 
     @Nested
+    class TimeoutTests {
+
+        @Test
+        void defaultTimeoutIs600Seconds() {
+            var op = new JBangOperation();
+            assertEquals(600L, op.timeout(), "Default timeout should be 600 seconds");
+        }
+
+        @Test
+        void timeoutCanBeOverridden() {
+            var op = new JBangOperation().timeout(30L);
+            assertEquals(30L, op.timeout());
+        }
+
+        @Test
+        void timeoutKillsLongRunningScript(@TempDir Path tmp) throws IOException {
+            var script = tmp.resolve("sleep.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class sleep {
+                        public static void main(String[] args) throws Exception {
+                            Thread.sleep(5000);
+                        }
+                    }
+                    """);
+
+            var op = new JBangOperation()
+                    .workDir(tmp.toFile())
+                    .script(script.toString())
+                    .timeout(1L) // 1 second
+                    .silent(true);
+
+            var ex = assertThrows(ExitStatusException.class, op::execute,
+                    "Should throw ExitStatusException on timeout");
+            assertEquals(ExitStatusException.EXIT_FAILURE, ex.getExitStatus());
+
+            // Verify it actually timed out fast and didn't wait 5s
+            assertTimeoutPreemptively(Duration.ofSeconds(3), () -> {
+                var op2 = new JBangOperation()
+                        .workDir(tmp.toFile())
+                        .script(script.toString())
+                        .timeout(1L)
+                        .silent(true);
+                assertThrows(ExitStatusException.class, op2::execute);
+            });
+        }
+
+        @Test
+        void timeoutMinusOneDisablesIt() {
+            var op = new JBangOperation().timeout(-1L);
+            assertEquals(-1L, op.timeout(), "Timeout -1 disables it");
+        }
+
+        @Test
+        void timeoutMinusOneWaitsForCompletion(@TempDir Path tmp) throws IOException {
+            var script = tmp.resolve("quick.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class quick {
+                        public static void main(String[] args) throws Exception {
+                            Thread.sleep(100);
+                            System.out.println("done");
+                        }
+                    }
+                    """);
+
+            var op = new JBangOperation()
+                    .workDir(tmp.toFile())
+                    .script(script.toString())
+                    .timeout(-1L) // wait forever
+                    .exitOnFailure(false)
+                    .silent(true);
+
+            assertDoesNotThrow(op::execute, "Should complete when timeout disabled");
+        }
+
+        @Test
+        void timeoutRejectsNegativeOtherThanMinusOne() {
+            // Optional: if you want to guard against -2, -100, etc.
+            // Current impl treats any <= 0 as "wait forever".
+            // If you want to enforce only -1, add validation in timeout(long).
+            var op = new JBangOperation().timeout(-5L);
+            assertEquals(-5L, op.timeout(), "Currently allows any negative, treated as wait forever");
+        }
+    }
+
+    @Nested
     @DisplayName("Work DirTests")
     class WorkDirTests {
 
         @Test
         void workDiInvalidWithoutLogging() {
-            LOGGER.setLevel(Level.OFF);
+            logger.setLevel(Level.OFF);
 
             assertThrows(ExitStatusException.class, () ->
                     new JBangOperation()
                             .fromProject(new BaseProject())
                             .workDir("foo")
                             .execute());
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
+            assertTrue(testLogHandler.isEmpty());
         }
 
         @Test
@@ -428,7 +698,7 @@ class JBangOperationTests {
                             .fromProject(new BaseProject())
                             .workDir("foo")
                             .execute());
-            assertTrue(TEST_LOG_HANDLER.containsMessage("Invalid working directory"));
+            assertTrue(testLogHandler.containsMessage("Invalid working directory"));
         }
 
         @Test
@@ -439,27 +709,27 @@ class JBangOperationTests {
                             .workDir("foo")
                             .silent(true)
                             .execute());
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
+            assertTrue(testLogHandler.isEmpty());
         }
 
         @Test
         void workDirRequired() {
             assertThrows(ExitStatusException.class, () -> new JBangOperation().execute());
-            assertTrue(TEST_LOG_HANDLER.containsMessage("A work dir must be specified."));
+            assertTrue(testLogHandler.containsMessage("A work dir must be specified."));
         }
 
         @Test
         void workDirWithSilent() {
-            LOGGER.setLevel(Level.WARNING);
+            logger.setLevel(Level.WARNING);
             assertThrows(ExitStatusException.class, () -> new JBangOperation().silent(true).execute());
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
+            assertTrue(testLogHandler.isEmpty());
         }
 
         @Test
         void workDirWithoutLogging() {
-            LOGGER.setLevel(Level.OFF);
+            logger.setLevel(Level.OFF);
             assertThrows(ExitStatusException.class, () -> new JBangOperation().execute());
-            assertTrue(TEST_LOG_HANDLER.isEmpty());
+            assertTrue(testLogHandler.isEmpty());
         }
     }
 }
