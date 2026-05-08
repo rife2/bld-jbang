@@ -11,6 +11,7 @@ import static rife.bld.dependencies.Repository.RIFE2_RELEASES;
 import static rife.bld.dependencies.Scope.test;
 
 public class ExampleBuild extends Project {
+
     public ExampleBuild() {
         pkg = "com.example";
         name = "Example";
@@ -20,7 +21,7 @@ public class ExampleBuild extends Project {
         downloadSources = true;
 
         repositories = List.of(MAVEN_CENTRAL, RIFE2_RELEASES);
-        
+
         var junit = version(6, 0, 3);
         scope(test)
                 .include(dependency("org.junit.jupiter", "junit-jupiter", junit))
@@ -36,7 +37,9 @@ public class ExampleBuild extends Project {
         var op = new JBangOperation().fromProject(this);
 
         // Initialize a script. If JBang fails, the script probably already exists
-        op.jBangArgs("init", "hello.java").exitOnFailure(false).execute();
+        op.jBangArgs("init", "hello.java")
+                .exitOnFailure(false)
+                .execute();
 
         // Reset the JBang options
         op.reset();
