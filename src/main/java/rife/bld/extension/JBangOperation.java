@@ -47,6 +47,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     private static final Logger logger = Logger.getLogger(JBangOperation.class.getName());
     private static final Consumer<String> defaultOutputConsumer = logger::info;
     private final List<String> args_ = new ArrayList<>();
+    private final Map<String, String> env_ = new HashMap<>();
     private final List<String> jBangArgs_ = new ArrayList<>();
     private boolean exitOnFailure_ = true;
     private boolean inheritIO_ = true;
@@ -94,6 +95,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
                 .workDir(workDir_)
                 .timeout(timeout_)
                 .inheritIO(inheritIO_);
+
+        if (!env_.isEmpty()) {
+            executor.env(env_);
+        }
 
         if (!inheritIO_) {
             executor.outputConsumer(outputConsumer_);
@@ -239,6 +244,52 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      */
     public List<String> args() {
         return args_;
+    }
+
+    /**
+     * Adds an environment variable.
+     * <p>
+     * These variables are merged with the current process environment. Existing variables
+     * with the same name are overridden.
+     *
+     * @param name  the variable name, must not be null
+     * @param value the variable value, must not be null
+     * @return this operation instance
+     * @throws IllegalArgumentException if {@code name} is empty or null
+     * @throws NullPointerException     if {@code value} is null
+     * @see #env(Map)
+     */
+    public JBangOperation env(@NonNull String name, @NonNull String value) {
+        env_.put(ObjectTools.requireNotEmpty(name, "env name"),
+                ObjectTools.requireNonNull(value, "env value"));
+        return this;
+    }
+
+    /**
+     * Adds environment variables.
+     * <p>
+     * These variables are merged with the current process environment. Existing variables
+     * with the same name are overridden.
+     *
+     * @param vars the map of environment variables, must not be null and must not contain null keys or values
+     * @return this operation instance
+     * @throws NullPointerException if {@code vars} is null, or if {@code vars} contains a null key or value
+     * @see #env(String, String)
+     */
+    public JBangOperation env(@NonNull Map<String, String> vars) {
+        env_.putAll(ObjectTools.requireNonNull(vars, "env"));
+        return this;
+    }
+
+    /**
+     * Returns the environment variables.
+     * <p>
+     * The returned map is mutable and can be modified directly before calling {@link #execute()}.
+     *
+     * @return the mutable environment variables map, never null
+     */
+    public Map<String, String> env() {
+        return env_;
     }
 
     /**
@@ -434,6 +485,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * Specifically, this method:
      * <ul>
      *     <li>Clears all {@link #args() script arguments}</li>
+     *     <li>Clears all {@link #env() environment variables}</li>
      *     <li>Clears all {@link #jBangArgs() JBang arguments}</li>
      *     <li>Resets the {@link #isExitOnFailure() exit on failure flag} to {@code true}</li>
      *     <li>Clears the assigned {@link #script() script}</li>
@@ -447,6 +499,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      */
     public void reset() {
         args_.clear();
+        env_.clear();
         jBangArgs_.clear();
         exitOnFailure_ = true;
         script_ = null;
