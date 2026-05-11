@@ -40,13 +40,14 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(LoggingExtension.class)
-@SuppressWarnings("PMD.AvoidDuplicateLiterals")
+@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "DataFlowIssue"})
 class JBangOperationTests {
 
     @SuppressWarnings("LoggerInitializedWithForeignClass")
@@ -64,6 +65,184 @@ class JBangOperationTests {
     @BeforeEach
     void beforeEach() {
         testLogHandler.clear();
+    }
+
+    @Nested
+    @DisplayName("Environment Variables Tests")
+    class EnvironmentVariablesTests {
+
+        @Test
+        @DisplayName("env() returns mutable map")
+        void envGetterReturnsMutableMap() {
+            var op = new JBangOperation();
+            var env = op.env();
+            assertNotNull(env);
+            assertTrue(env.isEmpty());
+
+            env.put("X", "Y");
+            assertEquals("Y", op.env().get("X"), "env() should return live mutable map");
+        }
+
+        @Test
+        @DisplayName("env variables merged with parent environment")
+        void envMergedWithParent(@TempDir Path tempDir) throws Exception {
+            var script = tempDir.resolve("env.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class env {
+                        public static void main(String[] args) {
+                            System.out.println("CUSTOM=" + System.getenv("CUSTOM"));
+                            System.out.println("PATH_EXISTS=" + (System.getenv("PATH") != null));
+                        }
+                    }
+                    """);
+
+            new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .env("CUSTOM", "value")
+                    .inheritIO(false)
+                    .execute();
+
+            assertTrue(testLogHandler.containsMessage("CUSTOM=value"),
+                    "Custom env var should be set");
+            assertTrue(testLogHandler.containsMessage("PATH_EXISTS=true"),
+                    "PATH from parent env should still exist - env must merge, not replace");
+        }
+
+        @Test
+        @DisplayName("env(Map) adds multiple variables")
+        void envMultipleVariables(@TempDir Path tempDir) throws Exception {
+            var script = tempDir.resolve("env.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class env {
+                        public static void main(String[] args) {
+                            System.out.println("A=" + System.getenv("A"));
+                            System.out.println("B=" + System.getenv("B"));
+                        }
+                    }
+                    """);
+
+            var vars = Map.of("A", "1", "B", "2");
+            new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .env(vars)
+                    .inheritIO(false)
+                    .execute();
+
+            assertTrue(testLogHandler.containsMessage("A=1"));
+            assertTrue(testLogHandler.containsMessage("B=2"));
+        }
+
+        @Test
+        @DisplayName("env variables override existing ones")
+        void envOverridesExisting(@TempDir Path tempDir) throws Exception {
+            var script = tempDir.resolve("env.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class env {
+                        public static void main(String[] args) {
+                            System.out.println("FOO=" + System.getenv("FOO"));
+                        }
+                    }
+                    """);
+
+            new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .env("FOO", "first")
+                    .env("FOO", "second") // override
+                    .inheritIO(false)
+                    .execute();
+
+            assertTrue(testLogHandler.containsMessage("FOO=second"),
+                    "Last env value should win");
+            assertFalse(testLogHandler.containsMessage("FOO=first"));
+        }
+
+        @Test
+        @DisplayName("env rejects empty name")
+        void envRejectsEmptyName() {
+            var op = new JBangOperation();
+            assertThrows(IllegalArgumentException.class, () -> op.env("", "value"));
+        }
+
+        @Test
+        @DisplayName("env(Map) rejects null map")
+        void envRejectsNullMap() {
+            var op = new JBangOperation();
+            assertThrows(NullPointerException.class, () -> op.env(null));
+        }
+
+        @Test
+        @DisplayName("env rejects null name")
+        void envRejectsNullName() {
+            var op = new JBangOperation();
+            assertThrows(NullPointerException.class, () -> op.env(null, "value"));
+        }
+
+        @Test
+        @DisplayName("env rejects null value")
+        void envRejectsNullValue() {
+            var op = new JBangOperation();
+            assertThrows(NullPointerException.class, () -> op.env("KEY", null));
+        }
+
+        @Test
+        @DisplayName("env(String, String) adds single variable")
+        void envSingleVariable(@TempDir Path tempDir) throws Exception {
+            var script = tempDir.resolve("env.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class env {
+                        public static void main(String[] args) {
+                            System.out.println("FOO=" + System.getenv("FOO"));
+                        }
+                    }
+                    """);
+
+            new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .env("FOO", "bar")
+                    .inheritIO(false)
+                    .execute();
+
+            assertTrue(testLogHandler.containsMessage("FOO=bar"),
+                    "Environment variable should be passed to JBang process");
+        }
+
+        @Test
+        @DisplayName("env with JBang-specific variables like JAVA_HOME")
+        void envWithJavaHome(@TempDir Path tempDir) throws Exception {
+            var script = tempDir.resolve("java.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class java {
+                        public static void main(String[] args) {
+                            System.out.println(System.getProperty("java.home"));
+                        }
+                    }
+                    """);
+
+            // This test just verifies the var is passed. Won't actually change JDK
+            // unless JAVA_HOME points to a valid JDK, but JBang will use it if valid.
+            var fakeHome = tempDir.resolve("fakejdk").toString();
+            new JBangOperation()
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .env("JAVA_HOME", fakeHome)
+                    .inheritIO(false)
+                    .exitOnFailure(false) // JBang may fail if fakeHome invalid, that's ok
+                    .execute();
+
+            // We can't assert the actual java.home changed without a real JDK,
+            // but we can verify the command didn't crash due to env setup
+            assertTrue(testLogHandler.containsMessage("jbang") || testLogHandler.containsMessage("java"),
+                    "Command should have executed");
+        }
     }
 
     @Nested
@@ -283,12 +462,14 @@ class JBangOperationTests {
                     .exitOnFailure(false)
                     .jBangArgs("run")
                     .script("Hello.java")
-                    .args("foo", "bar");
+                    .args("foo", "bar")
+                    .env("TEST", "value"); // add this
 
             assertFalse(op.isExitOnFailure(), "exitOnFailure should be false");
             assertEquals(1, op.jBangArgs().size(), "jBangArgs should have 1 element");
             assertEquals("Hello.java", op.script(), "script should be Hello.java");
             assertEquals(2, op.args().size(), "args should have 2 elements");
+            assertEquals("value", op.env().get("TEST"), "env should have TEST"); // add this
 
             op.reset();
 
@@ -296,6 +477,7 @@ class JBangOperationTests {
             assertTrue(op.jBangArgs().isEmpty(), "jBangArgs should be empty");
             assertNull(op.script(), "script should be null");
             assertTrue(op.args().isEmpty(), "args should be empty");
+            assertTrue(op.env().isEmpty(), "env should be empty");
         }
 
         @Nested

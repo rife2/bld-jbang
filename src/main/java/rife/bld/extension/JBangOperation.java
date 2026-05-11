@@ -19,7 +19,6 @@ package rife.bld.extension;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import rife.bld.BaseProject;
-import rife.bld.extension.tools.CollectionTools;
 import rife.bld.extension.tools.ObjectTools;
 import rife.bld.extension.tools.ProcessExecutor;
 import rife.bld.extension.tools.SystemTools;
@@ -28,10 +27,7 @@ import rife.bld.operations.exceptions.ExitStatusException;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -44,19 +40,19 @@ import java.util.logging.Logger;
  */
 @SuppressFBWarnings(
         value = "EI_EXPOSE_REP",
-        justification = "Builder pattern intentionally exposes mutable collections"
+        justification = "Builder pattern intentionally exposes mutable collections; callers may add to them directly"
 )
 public class JBangOperation extends AbstractOperation<JBangOperation> {
 
     private static final Logger logger = Logger.getLogger(JBangOperation.class.getName());
-    private static final Consumer<String> DEFAULT_OUTPUT_CONSUMER = logger::info;
+    private static final Consumer<String> defaultOutputConsumer = logger::info;
     private final List<String> args_ = new ArrayList<>();
     private final List<String> jBangArgs_ = new ArrayList<>();
     private boolean exitOnFailure_ = true;
     private boolean inheritIO_ = true;
     private File jBangHome_;
     @NonNull
-    private Consumer<String> outputConsumer_ = DEFAULT_OUTPUT_CONSUMER;
+    private Consumer<String> outputConsumer_ = defaultOutputConsumer;
     private String script_;
     private long timeout_ = 600L;
     private File workDir_;
@@ -212,11 +208,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use in the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code args} collection or its elements are {@code null} or empty
+     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
+     * @throws NullPointerException     if the {@code args} collection is {@code null}
      */
     public JBangOperation args(@NonNull Collection<String> args) {
-        ObjectTools.requireAllNotEmpty(args, "args and its elements must not be null or empty");
-        args_.addAll(CollectionTools.combine(args));
+        args_.addAll(ObjectTools.requireNotEmpty(args, "args"));
         return this;
     }
 
@@ -225,18 +221,21 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use in the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code args} array or its elements are {@code null} or empty
+     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
+     * @throws NullPointerException     if the {@code args} collection is {@code null}
      */
     public JBangOperation args(@NonNull String... args) {
-        ObjectTools.requireAllNotEmpty(args, "args and its elements must not be null or empty");
-        args_.addAll(List.of(args));
+        args_.addAll(List.of(ObjectTools.requireNotEmpty(args, "args")));
         return this;
     }
 
     /**
-     * Retrieves the collection of arguments to be passed to the script.
+     * Retrieves the live collection of arguments to be passed to the script.
+     * <p>
+     * The returned list is the operation's internal list. Callers may add to it directly;
+     * this is intentional by design (builder pattern).
      *
-     * @return a collection of arguments
+     * @return the mutable list of script arguments
      */
     public List<String> args() {
         return args_;
@@ -261,7 +260,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * Sets the following from the project:
      * <ul>
      *     <li>{@link #workDir() workDir} to the project's directory, if not already set</li>
-     *     <li>{@link #jBangHome() jBangHome} to the {@code JBANG_HOME} environment variable, if not already set</li>
+     *     <li>{@link #jBangHome() jBangHome} to the {@code JBANG_HOME} environment variable, if not
+     *     already set. A caller-set value always takes precedence over the environment variable.</li>
      * </ul>
      *
      * @param project the project to configure the operation from
@@ -269,7 +269,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws NullPointerException if the {@code project} is {@code null}
      */
     public JBangOperation fromProject(@NonNull BaseProject project) {
-        Objects.requireNonNull(project, "project must not be null");
+        ObjectTools.requireNonNull(project, "fromProject");
         if (workDir_ == null) {
             workDir_ = project.workDirectory().getAbsoluteFile();
         }
@@ -330,11 +330,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use when running the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code jbangArgs} collection or its elements are {@code null} or empty
+     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
+     * @throws NullPointerException     if the {@code args} collection is {@code null}
      */
     public JBangOperation jBangArgs(@NonNull Collection<String> args) {
-        ObjectTools.requireAllNotEmpty(args, "jBang args and its elements must not be null or empty");
-        jBangArgs_.addAll(CollectionTools.combine(args));
+        jBangArgs_.addAll(ObjectTools.requireNotEmpty(args, "jBangArgs"));
         return this;
     }
 
@@ -343,18 +343,21 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use when running the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code args} array or its elements are {@code null} or empty
+     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
+     * @throws NullPointerException     if the {@code args} collection is {@code null}
      */
     public JBangOperation jBangArgs(@NonNull String... args) {
-        ObjectTools.requireAllNotEmpty(args, "jBang args and its elements must not be null or empty");
-        jBangArgs_.addAll(List.of(args));
+        jBangArgs_.addAll(List.of(ObjectTools.requireNotEmpty(args, "jBangArgs")));
         return this;
     }
 
     /**
-     * Retrieves the collection of arguments to be used when running the script.
+     * Retrieves the live collection of arguments to be used when running the script.
+     * <p>
+     * The returned list is the operation's internal list. Callers may add to it directly;
+     * this is intentional by design (builder pattern).
      *
-     * @return a collection of script arguments
+     * @return the mutable list of JBang arguments
      */
     public List<String> jBangArgs() {
         return jBangArgs_;
@@ -365,11 +368,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
-     * @throws NullPointerException if jBangHome is null
+     * @throws NullPointerException     if {@code jBangHome} is null
+     * @throws IllegalArgumentException if {@code jBangHome} is empty
      */
     @SuppressFBWarnings("PATH_TRAVERSAL_IN")
     public JBangOperation jBangHome(@NonNull String jBangHome) {
-        Objects.requireNonNull(jBangHome, "jBang home must not be null");
+        ObjectTools.requireNotEmpty(jBangHome, "jBangHome");
         jBangHome_ = new File(jBangHome);
         return this;
     }
@@ -379,10 +383,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
-     * @throws NullPointerException if jBangHome is null
+     * @throws NullPointerException if {@code jBangHome} is null
      */
     public JBangOperation jBangHome(@NonNull File jBangHome) {
-        Objects.requireNonNull(jBangHome, "jBang home must not be null");
+        ObjectTools.requireNonNull(jBangHome, "jBangHome");
         jBangHome_ = jBangHome;
         return this;
     }
@@ -392,10 +396,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
-     * @throws NullPointerException if jBangHome is null
+     * @throws NullPointerException if {@code jBangHome} is null
      */
     public JBangOperation jBangHome(@NonNull Path jBangHome) {
-        Objects.requireNonNull(jBangHome, "jBang home must not be null");
+        ObjectTools.requireNonNull(jBangHome, "jBangHome");
         jBangHome_ = jBangHome.toFile();
         return this;
     }
@@ -419,7 +423,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws NullPointerException if outputConsumer is null
      */
     public JBangOperation outputConsumer(@NonNull Consumer<String> outputConsumer) {
-        Objects.requireNonNull(outputConsumer, "outputConsumer must not be null");
+        ObjectTools.requireNonNull(outputConsumer, "outputConsumer");
         outputConsumer_ = outputConsumer;
         return this;
     }
@@ -435,9 +439,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *     <li>Clears the assigned {@link #script() script}</li>
      * </ul>
      * <p>
-     * Note: {@link #workDir() workDir}, {@link #jBangHome() jBangHome} and {@link #timeout() timeout}
-     * are intentionally preserved, as they are typically set once via {@link #fromProject(BaseProject)}
-     * and shared across multiple script executions.
+     * The following are intentionally preserved across resets, as they are typically set once
+     * via {@link #fromProject(BaseProject) fromProject} and shared across multiple script
+     * executions: {@link #workDir() workDir}, {@link #jBangHome() jBangHome},
+     * {@link #timeout() timeout}, {@link #isInheritIO() inheritIO}, and the
+     * {@link #outputConsumer(Consumer) outputConsumer}.
      */
     public void reset() {
         args_.clear();
@@ -451,11 +457,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param script the script to execute
      * @return this operation instance
-     * @throws IllegalArgumentException if the script is null or empty
+     * @throws IllegalArgumentException if {@code script} is null or empty
+     * @throws NullPointerException     if {@code script} is null
      */
     public JBangOperation script(@NonNull String script) {
-        ObjectTools.requireNotEmpty(script, "script must not be null or empty");
-        script_ = script;
+        script_ = ObjectTools.requireNotEmpty(script, "script");
         return this;
     }
 
@@ -472,18 +478,20 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * Sets the timeout for JBang execution in seconds.
      * <p>
      * If the process does not complete within the specified timeout, it will be terminated
-     * and the operation will fail. If set to {@code 0} or any negative value, the process
-     * will wait indefinitely.
+     * and the operation will fail. If set to any negative value, the process will wait indefinitely.
+     * Passing {@code 0} is not allowed; use a negative value to indicate no timeout.
      * <p>
      * Default is {@code 600} seconds (10 minutes)
      *
-     * @param seconds the timeout in seconds; use a negative value for no timeout
+     * @param seconds the timeout in seconds (positive); use a negative value for no timeout
      * @return this operation instance
+     * @throws IllegalArgumentException if {@code seconds} is {@code 0}
      * @since 1.2
      */
     public JBangOperation timeout(long seconds) {
         if (seconds == 0) {
-            throw new IllegalArgumentException("timeout should not be 0; use negative value for no timeout");
+            throw new IllegalArgumentException(
+                    "timeout must be a positive number of seconds, or negative for no timeout; 0 is not allowed");
         }
         timeout_ = seconds;
         return this;
@@ -492,9 +500,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Retrieves the timeout for JBang execution in seconds.
      * <p>
-     * A value of {@code 0} or any negative value indicates no timeout (wait indefinitely).
+     * A positive value is the timeout duration in seconds. A negative value indicates no timeout
+     * (wait indefinitely). {@code 0} is not a valid state; the setter disallows it.
      *
-     * @return the timeout in seconds, or {@code 0} / a negative value if no timeout is set
+     * @return the timeout in seconds (positive), or a negative value if no timeout is set
      * @since 1.2
      */
     public long timeout() {
@@ -515,11 +524,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param dir the directory
      * @return this operation instance
-     * @throws NullPointerException if dir is null
+     * @throws NullPointerException if {@code dir} is null
      */
     public JBangOperation workDir(@NonNull File dir) {
-        Objects.requireNonNull(dir, "work dir must not be null");
-        workDir_ = dir;
+        workDir_ = ObjectTools.requireNonNull(dir, "workDir");
         return this;
     }
 
@@ -528,10 +536,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param dir the directory
      * @return this operation instance
-     * @throws NullPointerException if dir is null
+     * @throws NullPointerException if {@code dir} is null
      */
     public JBangOperation workDir(@NonNull Path dir) {
-        Objects.requireNonNull(dir, "work dir must not be null");
+        ObjectTools.requireNonNull(dir, "workDir");
         workDir_ = dir.toFile();
         return this;
     }
@@ -541,20 +549,26 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param dir the directory path
      * @return this operation instance
-     * @throws IllegalArgumentException if dir is null or empty
+     * @throws IllegalArgumentException if {@code dir} is empty
+     * @throws NullPointerException     if {@code dir} is null
      */
     @SuppressFBWarnings("PATH_TRAVERSAL_IN")
     public JBangOperation workDir(@NonNull String dir) {
-        ObjectTools.requireNotEmpty(dir, "work dir must not be null or empty");
+        ObjectTools.requireNotEmpty(dir, "workDir");
         workDir_ = (new File(dir));
         return this;
     }
 
     /**
      * Finds the JBang executable path.
+     * <p>
+     * If {@link #jBangHome() jBangHome} is set, resolves the executable under its {@code bin/}
+     * directory and verifies it is executable, failing fast with a clear message if not.
+     * If {@code jBangHome} is not set, returns the bare executable name ({@code jbang} or
+     * {@code jbang.cmd} on Windows) and relies on {@code PATH} resolution at process launch.
      *
-     * @return the absolute path to the JBang executable
-     * @throws ExitStatusException if the executable is not found or not executable
+     * @return the absolute path to the JBang executable, or the bare name if relying on PATH
+     * @throws ExitStatusException if the resolved executable is not found or not executable
      */
     private String findJBangExec() throws ExitStatusException {
         var jbang = isWindows() ? "jbang.cmd" : "jbang";
