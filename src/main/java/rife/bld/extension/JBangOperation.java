@@ -62,7 +62,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * Performs the operation
      *
      * @throws Exception           if an error occurs
-     * @throws ExitStatusException if workDir is null or invalid, JBang execution fails or times out
+     * @throws ExitStatusException if workDir is {@code null} or invalid, execution fails or times out
      */
     @Override
     public void execute() throws Exception {
@@ -213,8 +213,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use in the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
-     * @throws NullPointerException     if the {@code args} collection is {@code null}
+     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
+     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
     public JBangOperation args(@NonNull Collection<String> args) {
         args_.addAll(ObjectTools.requireNotEmpty(args, "args"));
@@ -226,8 +226,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use in the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
-     * @throws NullPointerException     if the {@code args} collection is {@code null}
+     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
+     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
     public JBangOperation args(@NonNull String... args) {
         args_.addAll(List.of(ObjectTools.requireNotEmpty(args, "args")));
@@ -381,8 +381,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use when running the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
-     * @throws NullPointerException     if the {@code args} collection is {@code null}
+     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
+     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
     public JBangOperation jBangArgs(@NonNull Collection<String> args) {
         jBangArgs_.addAll(ObjectTools.requireNotEmpty(args, "jBangArgs"));
@@ -394,8 +394,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param args the arguments to use when running the script
      * @return this operation instance
-     * @throws IllegalArgumentException if the {@code args} elements are {@code null} or empty
-     * @throws NullPointerException     if the {@code args} collection is {@code null}
+     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
+     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
     public JBangOperation jBangArgs(@NonNull String... args) {
         jBangArgs_.addAll(List.of(ObjectTools.requireNotEmpty(args, "jBangArgs")));
@@ -510,8 +510,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param script the script to execute
      * @return this operation instance
-     * @throws IllegalArgumentException if {@code script} is null or empty
      * @throws NullPointerException     if {@code script} is null
+     * @throws IllegalArgumentException if {@code script} is empty
      */
     public JBangOperation script(@NonNull String script) {
         script_ = ObjectTools.requireNotEmpty(script, "script");

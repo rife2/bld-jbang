@@ -25,6 +25,9 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import rife.bld.BaseProject;
 import rife.bld.extension.testing.EnabledOnCi;
 import rife.bld.extension.testing.LoggingExtension;
@@ -38,9 +41,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -48,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(LoggingExtension.class)
 @SuppressWarnings({"PMD.AvoidDuplicateLiterals", "DataFlowIssue"})
-class JBangOperationTests {
+class JBangOperationTest {
 
     @SuppressWarnings("LoggerInitializedWithForeignClass")
     private static final Logger logger = Logger.getLogger(JBangOperation.class.getName());
@@ -854,6 +855,119 @@ class JBangOperationTests {
             // If you want to enforce only -1, add validation in timeout(long).
             var op = new JBangOperation().timeout(-5L);
             assertEquals(-5L, op.timeout(), "Currently allows any negative, treated as wait forever");
+        }
+    }
+
+    @Nested
+    @DisplayName("Validation Tests")
+    class ValidationTests {
+
+        @ParameterizedTest
+        @ValueSource(strings = {""})
+        void argsEmpty(String arg) {
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().args("foo", arg));
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().args(List.of("foo", arg)));
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().args(arg));
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().args(List.of()));
+        }
+
+        @ParameterizedTest
+        @NullSource
+        void argsNull(String arg) {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().args("foo", arg));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().args(List.of("foo", arg)));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().args((String[]) null));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().args((Collection<String>) null));
+        }
+
+        @Test
+        void envEmptyKey() {
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().env("", "value"));
+        }
+
+        @Test
+        void envMapWithNullKey() {
+            var map = new HashMap<String, String>();
+            map.put(null, "value");
+            assertThrows(NullPointerException.class, () -> new JBangOperation().env(map));
+        }
+
+        @Test
+        void envMapWithNullValue() {
+            var map = new HashMap<String, String>();
+            map.put("key", null);
+            assertThrows(NullPointerException.class, () -> new JBangOperation().env(map));
+        }
+
+        @Test
+        void envNullKey() {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().env(null, "value"));
+        }
+
+        @Test
+        void envNullMap() {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().env(null));
+        }
+
+        @Test
+        void envNullValue() {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().env("key", null));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {""})
+        void jBangArgsEmpty(String arg) {
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().jBangArgs("foo", arg));
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().jBangArgs(List.of("foo", arg)));
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().jBangArgs(arg));
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().jBangArgs(List.of()));
+        }
+
+        @ParameterizedTest
+        @NullSource
+        void jBangArgsNull(String arg) {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().jBangArgs("foo", arg));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().jBangArgs(List.of("foo", arg)));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {""})
+        void jBangHomeEmpty(String dir) {
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().jBangHome(dir));
+        }
+
+        @ParameterizedTest
+        @NullSource
+        void jBangHomeNull(String dir) {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().jBangHome(dir));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().jBangHome((File) null));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().jBangHome((Path) null));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {""})
+        void scriptEmpty(String script) {
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().script(script));
+        }
+
+        @ParameterizedTest
+        @NullSource
+        void scriptNull(String script) {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().script(script));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {""})
+        void workDirEmpty(String dir) {
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().workDir(dir));
+        }
+
+        @ParameterizedTest
+        @NullSource
+        void workDirNull(String dir) {
+            assertThrows(NullPointerException.class, () -> new JBangOperation().workDir(dir));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().workDir((File) null));
+            assertThrows(NullPointerException.class, () -> new JBangOperation().workDir((Path) null));
         }
     }
 
