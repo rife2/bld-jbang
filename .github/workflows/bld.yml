@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout source repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -26,13 +26,18 @@ jobs:
       - name: Set up JBang
         uses: jbangdev/setup-jbang@main
 
-      - name: Download dependencies [example]
-        working-directory: example
-        run: ./bld download
+      - name: Cache bld dependencies
+        id: cache-bld
+        uses: actions/cache@v6
+        with:
+          path: |
+            examples/lib
+            lib
+          key: ${{ runner.os }}-bld-java${{ matrix.java-version }}-lib
 
       - name: Compile source code [example]
         working-directory: example
-        run: ./bld compile
+        run: ./bld --auto-download-purge clean compile
 
       - name: Run JBang [example]
         working-directory: example
@@ -42,11 +47,8 @@ jobs:
         working-directory: example
         run: ./bld test
 
-      - name: Download dependencies
-        run: ./bld download
-
       - name: Compile source code
-        run: ./bld compile
+        run: ./bld clean compile
 
       - name: Run tests
         id: tests
@@ -54,4 +56,4 @@ jobs:
 
       - name: Run reporter
         if: always() && steps.tests.outcome == 'failure'
-        run: ./bld reporter --all
+        run: ./bld --offline reporter --all
