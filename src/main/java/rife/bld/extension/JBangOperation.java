@@ -16,16 +16,16 @@
 
 package rife.bld.extension;
 
-import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import rife.bld.BaseProject;
-import rife.bld.extension.tools.ObjectTools;
-import rife.bld.extension.tools.ProcessExecutor;
-import rife.bld.extension.tools.SystemTools;
+import rife.bld.extension.tools.*;
 import rife.bld.operations.AbstractOperation;
 import rife.bld.operations.exceptions.ExitStatusException;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
@@ -38,6 +38,7 @@ import java.util.logging.Logger;
  * @author <a href="https://erik.thauvin.net/">Erik C. Thauvin</a>
  * @since 1.0
  */
+@NullMarked
 @SuppressFBWarnings(
         value = "EI_EXPOSE_REP",
         justification = "Builder pattern intentionally exposes mutable collections; callers may add to them directly"
@@ -51,12 +52,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     private final List<String> jBangArgs_ = new ArrayList<>();
     private boolean exitOnFailure_ = true;
     private boolean inheritIO_ = true;
-    private File jBangHome_;
-    @NonNull
+    private @Nullable File jBangHome_;
     private Consumer<String> outputConsumer_ = defaultOutputConsumer;
-    private String script_;
+    private @Nullable String script_;
     private long timeout_ = 600L;
-    private File workDir_;
+    private @Nullable File workDir_;
 
     /**
      * Performs the operation
@@ -87,34 +87,47 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
         command.addAll(args_);
 
         if (logger.isLoggable(Level.INFO) && !silent()) {
-            logger.info(String.join(" ", command));
+            logger.info(PathTools.formatCommandLine(command));
         }
 
-        var executor = new ProcessExecutor()
-                .command(command)
-                .workDir(workDir_)
-                .timeout(timeout_)
-                .inheritIO(inheritIO_);
+        try {
+            var executor = new ProcessExecutor()
+                    .command(command)
+                    .workDir(workDir_)
+                    .timeout(timeout_)
+                    .inheritIO(inheritIO_);
 
-        if (!env_.isEmpty()) {
-            executor.env(env_);
-        }
+            if (!env_.isEmpty()) {
+                executor.env(env_);
+            }
 
-        if (!inheritIO_) {
-            executor.outputConsumer(outputConsumer_);
-        }
+            if (!inheritIO_) {
+                executor.outputConsumer(outputConsumer_);
+            }
 
-        var result = executor.execute();
+            var result = executor.execute();
 
-        if (result.timedOut()) {
+            if (result.timedOut()) {
+                if (logger.isLoggable(Level.SEVERE) && !silent()) {
+                    logger.severe("JBang execution timed out after " + timeout_ + " seconds.");
+                }
+                throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+            }
+
+            if (exitOnFailure_ && !result.isSuccess()) {
+                ExitStatusException.throwOnFailure(result.exitCode());
+            }
+        } catch (IOException e) {
             if (logger.isLoggable(Level.SEVERE) && !silent()) {
-                logger.severe("JBang execution timed out after " + timeout_ + " seconds.");
+                logger.log(Level.SEVERE, e.getLocalizedMessage(), e);
             }
             throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
-        }
-
-        if (exitOnFailure_ && !result.isSuccess()) {
-            ExitStatusException.throwOnFailure(result.exitCode());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (logger.isLoggable(Level.SEVERE) && !silent()) {
+                logger.log(Level.SEVERE, e.getLocalizedMessage(), e);
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
         }
     }
 
@@ -216,8 +229,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
      * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
-    public JBangOperation args(@NonNull Collection<String> args) {
-        args_.addAll(ObjectTools.requireNotEmpty(args, "args"));
+    public JBangOperation args(Collection<String> args) {
+        args_.addAll(TextTools.requireNotEmpty(args, "args"));
         return this;
     }
 
@@ -229,8 +242,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
      * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
-    public JBangOperation args(@NonNull String... args) {
-        args_.addAll(List.of(ObjectTools.requireNotEmpty(args, "args")));
+    public JBangOperation args(String... args) {
+        args_.addAll(List.of(TextTools.requireNotEmpty("args", args)));
         return this;
     }
 
@@ -255,12 +268,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @param name  the variable name, must not be null
      * @param value the variable value, must not be null
      * @return this operation instance
-     * @throws IllegalArgumentException if {@code name} is empty or null
-     * @throws NullPointerException     if {@code value} is null
+     * @throws IllegalArgumentException if {@code name} is blank
+     * @throws NullPointerException     if {@code name} or {@code value} is {@code null}
      * @see #env(Map)
      */
-    public JBangOperation env(@NonNull String name, @NonNull String value) {
-        env_.put(ObjectTools.requireNotEmpty(name, "env name"),
+    public JBangOperation env(String name, String value) {
+        env_.put(TextTools.requireNotBlank(name, "env name"),
                 ObjectTools.requireNonNull(value, "env value"));
         return this;
     }
@@ -273,10 +286,10 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param vars the map of environment variables, must not be null and must not contain null keys or values
      * @return this operation instance
-     * @throws NullPointerException if {@code vars} is null, or if {@code vars} contains a null key or value
+     * @throws NullPointerException if {@code vars} is {@code null}, or if {@code vars} contains a null key or value
      * @see #env(String, String)
      */
-    public JBangOperation env(@NonNull Map<String, String> vars) {
+    public JBangOperation env(Map<String, String> vars) {
         env_.putAll(ObjectTools.requireNonNull(vars, "env"));
         return this;
     }
@@ -319,7 +332,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @return this operation instance
      * @throws NullPointerException if the {@code project} is {@code null}
      */
-    public JBangOperation fromProject(@NonNull BaseProject project) {
+    public JBangOperation fromProject(BaseProject project) {
         ObjectTools.requireNonNull(project, "fromProject");
         if (workDir_ == null) {
             workDir_ = project.workDirectory().getAbsoluteFile();
@@ -384,8 +397,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
      * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
-    public JBangOperation jBangArgs(@NonNull Collection<String> args) {
-        jBangArgs_.addAll(ObjectTools.requireNotEmpty(args, "jBangArgs"));
+    public JBangOperation jBangArgs(Collection<String> args) {
+        jBangArgs_.addAll(TextTools.requireNotEmpty(args, "jBangArgs"));
         return this;
     }
 
@@ -397,8 +410,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
      * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
      */
-    public JBangOperation jBangArgs(@NonNull String... args) {
-        jBangArgs_.addAll(List.of(ObjectTools.requireNotEmpty(args, "jBangArgs")));
+    public JBangOperation jBangArgs(String... args) {
+        jBangArgs_.addAll(List.of(TextTools.requireNotEmpty("jBangArgs", args)));
         return this;
     }
 
@@ -419,12 +432,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
-     * @throws NullPointerException     if {@code jBangHome} is null
-     * @throws IllegalArgumentException if {@code jBangHome} is empty
+     * @throws NullPointerException     if {@code jBangHome} is {@code null}
+     * @throws IllegalArgumentException if {@code jBangHome} is blank
      */
-    @SuppressFBWarnings("PATH_TRAVERSAL_IN")
-    public JBangOperation jBangHome(@NonNull String jBangHome) {
-        ObjectTools.requireNotEmpty(jBangHome, "jBangHome");
+    public JBangOperation jBangHome(String jBangHome) {
+        TextTools.requireNotBlank(jBangHome, "jBangHome");
         jBangHome_ = new File(jBangHome);
         return this;
     }
@@ -434,9 +446,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
-     * @throws NullPointerException if {@code jBangHome} is null
+     * @throws NullPointerException if {@code jBangHome} is {@code null}
      */
-    public JBangOperation jBangHome(@NonNull File jBangHome) {
+    public JBangOperation jBangHome(File jBangHome) {
         ObjectTools.requireNonNull(jBangHome, "jBangHome");
         jBangHome_ = jBangHome;
         return this;
@@ -447,9 +459,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
-     * @throws NullPointerException if {@code jBangHome} is null
+     * @throws NullPointerException if {@code jBangHome} is {@code null}
      */
-    public JBangOperation jBangHome(@NonNull Path jBangHome) {
+    public JBangOperation jBangHome(Path jBangHome) {
         ObjectTools.requireNonNull(jBangHome, "jBangHome");
         jBangHome_ = jBangHome.toFile();
         return this;
@@ -460,6 +472,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @return the JBang home directory
      */
+    @Nullable
     public File jBangHome() {
         return jBangHome_;
     }
@@ -471,9 +484,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param outputConsumer the output consumer, must not be null
      * @return this operation instance
-     * @throws NullPointerException if outputConsumer is null
+     * @throws NullPointerException if outputConsumer is {@code null}
      */
-    public JBangOperation outputConsumer(@NonNull Consumer<String> outputConsumer) {
+    public JBangOperation outputConsumer(Consumer<String> outputConsumer) {
         ObjectTools.requireNonNull(outputConsumer, "outputConsumer");
         outputConsumer_ = outputConsumer;
         return this;
@@ -510,11 +523,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param script the script to execute
      * @return this operation instance
-     * @throws NullPointerException     if {@code script} is null
-     * @throws IllegalArgumentException if {@code script} is empty
+     * @throws NullPointerException     if {@code script} is {@code null}
+     * @throws IllegalArgumentException if {@code script} is blank
      */
-    public JBangOperation script(@NonNull String script) {
-        script_ = ObjectTools.requireNotEmpty(script, "script");
+    public JBangOperation script(String script) {
+        script_ = TextTools.requireNotBlank(script, "script");
         return this;
     }
 
@@ -523,6 +536,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @return the script to be executed or {@code null}
      */
+    @Nullable
     public String script() {
         return script_;
     }
@@ -568,6 +582,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @return the directory
      */
+    @Nullable
     public File workDir() {
         return workDir_;
     }
@@ -577,9 +592,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param dir the directory
      * @return this operation instance
-     * @throws NullPointerException if {@code dir} is null
+     * @throws NullPointerException if {@code dir} is {@code null}
      */
-    public JBangOperation workDir(@NonNull File dir) {
+    public JBangOperation workDir(File dir) {
         workDir_ = ObjectTools.requireNonNull(dir, "workDir");
         return this;
     }
@@ -589,9 +604,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param dir the directory
      * @return this operation instance
-     * @throws NullPointerException if {@code dir} is null
+     * @throws NullPointerException if {@code dir} is {@code null}
      */
-    public JBangOperation workDir(@NonNull Path dir) {
+    public JBangOperation workDir(Path dir) {
         ObjectTools.requireNonNull(dir, "workDir");
         workDir_ = dir.toFile();
         return this;
@@ -602,12 +617,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      *
      * @param dir the directory path
      * @return this operation instance
-     * @throws IllegalArgumentException if {@code dir} is empty
-     * @throws NullPointerException     if {@code dir} is null
+     * @throws IllegalArgumentException if {@code dir} is blank
+     * @throws NullPointerException     if {@code dir} is {@code null}
      */
-    @SuppressFBWarnings("PATH_TRAVERSAL_IN")
-    public JBangOperation workDir(@NonNull String dir) {
-        ObjectTools.requireNotEmpty(dir, "workDir");
+    public JBangOperation workDir(String dir) {
+        TextTools.requireNotBlank(dir, "workDir");
         workDir_ = (new File(dir));
         return this;
     }
