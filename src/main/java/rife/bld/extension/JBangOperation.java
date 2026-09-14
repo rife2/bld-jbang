@@ -65,6 +65,8 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
      * @throws ExitStatusException if workDir is {@code null} or invalid, execution fails or times out
      */
     @Override
+    @SuppressWarnings({"PMD.PreserveStackTrace", "PMD.DoNotUseThreads"})
+    @SuppressFBWarnings("LEST_LOST_EXCEPTION_STACK_TRACE")
     public void execute() throws Exception {
         if (workDir_ == null) {
             if (logger.isLoggable(Level.SEVERE) && !silent()) {

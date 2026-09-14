@@ -31,7 +31,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: |
-            examples/lib
+            example/lib
             lib
           key: ${{ runner.os }}-bld-java${{ matrix.java-version }}-lib
 
