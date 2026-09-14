@@ -29,12 +29,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import rife.bld.BaseProject;
+import rife.bld.extension.tools.SystemTools;
+import rife.bld.operations.exceptions.ExitStatusException;
 import rife.bld.testing.EnabledOnCi;
 import rife.bld.testing.LoggingExtension;
 import rife.bld.testing.RandomString;
 import rife.bld.testing.TestLogHandler;
-import rife.bld.extension.tools.SystemTools;
-import rife.bld.operations.exceptions.ExitStatusException;
 
 import java.io.File;
 import java.io.IOException;
