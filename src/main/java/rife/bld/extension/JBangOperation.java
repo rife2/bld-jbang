@@ -20,12 +20,18 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import rife.bld.BaseProject;
+import rife.bld.dependencies.Version;
+import rife.bld.dependencies.VersionNumber;
 import rife.bld.extension.tools.*;
 import rife.bld.operations.AbstractOperation;
 import rife.bld.operations.exceptions.ExitStatusException;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
@@ -34,17 +40,44 @@ import java.util.logging.Logger;
 
 /**
  * Run JBang with the specified arguments.
+ * <p>
+ * JBang is launched via its wrapper, resolved from {@link #jBangHome(File) jBangHome} (or
+ * {@code JBANG_HOME}), a sandbox-downloaded distribution, or the {@code PATH}. When a
+ * specific {@link #version(Version) version} is configured, that version is downloaded
+ * into the sandbox and used regardless of any local JBang installation.
+ * {@link #useDownloadedJBang() useDownloadedJBang()} forces the downloaded distribution
+ * even when a local JBang is available.
  *
  * @author <a href="https://erik.thauvin.net/">Erik C. Thauvin</a>
  * @since 1.0
  */
 @NullMarked
-@SuppressFBWarnings(
-        value = "EI_EXPOSE_REP",
-        justification = "Builder pattern intentionally exposes mutable collections; callers may add to them directly"
-)
+@SuppressFBWarnings(value = "EI_EXPOSE_REP",
+        justification = "Builder pattern intentionally exposes mutable collections; callers may add to them directly")
 public class JBangOperation extends AbstractOperation<JBangOperation> {
 
+    /**
+     * A known stable JBang version.
+     * <p>
+     * This constant is <em>not</em> used as a default; when no version is configured the
+     * latest release is resolved (and cached). Use this constant to pin a reproducible
+     * version via {@link #version(Version)} or {@link #version(String)}.
+     *
+     * @since 1.0
+     */
+    public static final Version JBANG_VERSION = new VersionNumber(0, 143, 0);
+    /**
+     * URL of the text file that reports the latest JBang version.
+     */
+    private static final String JBANG_LATEST_VERSION_URL =
+            "https://www.jbang.dev/releases/latest/download/version.txt";
+    /**
+     * URL template for the JBang distribution zip, with the version substituted twice.
+     */
+    private static final String JBANG_RELEASES_URL =
+            "https://github.com/jbangdev/jbang/releases/download/v%s/jbang-%s.zip";
+    private static final String LATEST_VERSION_CACHE_FILE = ".jbang-latest-version";
+    private static final int VERSION_FETCH_TIMEOUT_MILLIS = 10_000;
     private static final Logger logger = Logger.getLogger(JBangOperation.class.getName());
     private static final Consumer<String> defaultOutputConsumer = logger::info;
     private final List<String> args_ = new ArrayList<>();
@@ -54,20 +87,38 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     private boolean inheritIO_ = true;
     private @Nullable File jBangHome_;
     private Consumer<String> outputConsumer_ = defaultOutputConsumer;
+    private @Nullable BaseProject project_;
+    private @Nullable String resolvedLatestVersion_;
     private @Nullable String script_;
     private long timeout_ = 600L;
+    private boolean useDownloadedJBang_;
+    private @Nullable Version version_;
     private @Nullable File workDir_;
 
     /**
-     * Performs the operation
+     * Enables or disables verbose output.
+     * <p>
+     * Corresponds to {@code --verbose}.
      *
-     * @throws Exception           if an error occurs
-     * @throws ExitStatusException if workDir is {@code null} or invalid, execution fails or times out
+     * @param verbose {@code true} to enable verbose output
+     * @return this operation instance
+     * @since 1.1
+     */
+    @Override
+    public JBangOperation verbose(boolean verbose) {
+        super.verbose(verbose);
+        return optBool("--verbose", verbose);
+    }
+
+    /**
+     * Performs the operation.
+     *
+     * @throws ExitStatusException if workDir is missing or invalid, execution fails, or times out
      */
     @Override
     @SuppressWarnings({"PMD.PreserveStackTrace", "PMD.DoNotUseThreads"})
     @SuppressFBWarnings("LEST_LOST_EXCEPTION_STACK_TRACE")
-    public void execute() throws Exception {
+    public void execute() throws ExitStatusException {
         if (workDir_ == null) {
             if (logger.isLoggable(Level.SEVERE) && !silent()) {
                 logger.severe("A work dir must be specified.");
@@ -80,8 +131,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
             throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
         }
 
-        var command = new ArrayList<String>();
-        command.add(findJBangExec());
+        var command = buildJBangCommand();
         command.addAll(jBangArgs_);
         if (script_ != null) {
             command.add(script_);
@@ -136,7 +186,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is AIX.
      *
-     * @return {@code true} if the operating system is identified as AIX, {@code false} otherwise
+     * @return {@code true} if the operating system is identified as AIX
      * @see SystemTools#isAix()
      */
     public static boolean isAix() {
@@ -146,7 +196,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is Cygwin.
      *
-     * @return {@code true} if the operating system is identified as Cygwin, {@code false} otherwise
+     * @return {@code true} if the operating system is identified as Cygwin
      * @see SystemTools#isCygwin()
      */
     public static boolean isCygwin() {
@@ -156,7 +206,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is FreeBSD.
      *
-     * @return {@code true} if the operating system is FreeBSD, {@code false} otherwise
+     * @return {@code true} if the operating system is identified as FreeBSD
      * @see SystemTools#isFreeBsd()
      */
     public static boolean isFreeBsd() {
@@ -164,9 +214,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Determines if the operating system is Linux.
+     * Determines if the current operating system is Linux.
      *
-     * @return {@code true} if the operating system is Linux, {@code false} otherwise
+     * @return {@code true} if the operating system is Linux
      * @see SystemTools#isLinux()
      */
     public static boolean isLinux() {
@@ -176,7 +226,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is macOS.
      *
-     * @return {@code true} if the OS is macOS, {@code false} otherwise
+     * @return {@code true} if the operating system is macOS
      * @see SystemTools#isMacOS()
      */
     public static boolean isMacOS() {
@@ -186,7 +236,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is MinGW.
      *
-     * @return {@code true} if the operating system is identified as MinGW, {@code false} otherwise
+     * @return {@code true} if the operating system is identified as MinGW
      * @see SystemTools#isMinGw()
      */
     public static boolean isMinGw() {
@@ -196,7 +246,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is OpenVMS.
      *
-     * @return {@code true} if the operating system is OpenVMS, {@code false} otherwise
+     * @return {@code true} if the operating system is OpenVMS
      * @see SystemTools#isOpenVms()
      */
     public static boolean isOpenVms() {
@@ -206,7 +256,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is Solaris.
      *
-     * @return {@code true} if the operating system is Solaris, {@code false} otherwise
+     * @return {@code true} if the operating system is Solaris
      * @see SystemTools#isSolaris()
      */
     public static boolean isSolaris() {
@@ -216,7 +266,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     /**
      * Determines if the current operating system is Windows.
      *
-     * @return {@code true} if the operating system is Windows, {@code false} otherwise
+     * @return {@code true} if the operating system is Windows
      * @see SystemTools#isWindows()
      */
     public static boolean isWindows() {
@@ -224,12 +274,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Sets the arguments to be used in the {@link #script(String) script}.
+     * Adds the arguments passed to the script.
      *
-     * @param args the arguments to use in the script
+     * @param args the script arguments
      * @return this operation instance
-     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
-     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
+     * @throws NullPointerException     if {@code args} is {@code null} or contains {@code null}
+     * @throws IllegalArgumentException if {@code args} is empty or contains empty elements
      */
     public JBangOperation args(Collection<String> args) {
         args_.addAll(TextTools.requireNotEmpty(args, "args"));
@@ -237,12 +287,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Sets the arguments to be used in the {@link #script(String) script}.
+     * Adds the arguments passed to the script.
      *
-     * @param args the arguments to use in the script
+     * @param args the script arguments
      * @return this operation instance
-     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
-     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
+     * @throws NullPointerException     if {@code args} is {@code null} or contains {@code null}
+     * @throws IllegalArgumentException if {@code args} is empty or contains empty elements
      */
     public JBangOperation args(String... args) {
         args_.addAll(List.of(TextTools.requireNotEmpty("args", args)));
@@ -250,29 +300,68 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Retrieves the live collection of arguments to be passed to the script.
-     * <p>
-     * The returned list is the operation's internal list. Callers may add to it directly;
-     * this is intentional by design (builder pattern).
+     * Returns the live list of script arguments.
      *
-     * @return the mutable list of script arguments
+     * @return the mutable script arguments list
      */
     public List<String> args() {
         return args_;
     }
 
     /**
-     * Adds an environment variable.
+     * Sets the JBang configuration file.
      * <p>
-     * These variables are merged with the current process environment. Existing variables
-     * with the same name are overridden.
+     * Corresponds to {@code --config}.
      *
-     * @param name  the variable name, must not be null
-     * @param value the variable value, must not be null
+     * @param file the configuration file path
+     * @return this operation instance
+     * @throws NullPointerException     if {@code file} is {@code null}
+     * @throws IllegalArgumentException if {@code file} is blank
+     * @since 1.1
+     */
+    public JBangOperation config(String file) {
+        TextTools.requireNotBlank(file, "config");
+        return config(new File(file));
+    }
+
+    /**
+     * Sets the JBang configuration file.
+     * <p>
+     * Corresponds to {@code --config}.
+     *
+     * @param file the configuration file
+     * @return this operation instance
+     * @throws NullPointerException if {@code file} is {@code null}
+     * @since 1.1
+     */
+    public JBangOperation config(File file) {
+        ObjectTools.requireNonNull(file, "config");
+        return opt("--config", file.getAbsolutePath());
+    }
+
+    /**
+     * Sets the JBang configuration file.
+     * <p>
+     * Corresponds to {@code --config}.
+     *
+     * @param file the configuration file path
+     * @return this operation instance
+     * @throws NullPointerException if {@code file} is {@code null}
+     * @since 1.1
+     */
+    public JBangOperation config(Path file) {
+        ObjectTools.requireNonNull(file, "config");
+        return config(file.toFile());
+    }
+
+    /**
+     * Adds an environment variable, merged with the current process environment.
+     *
+     * @param name  the variable name
+     * @param value the variable value
      * @return this operation instance
      * @throws IllegalArgumentException if {@code name} is blank
      * @throws NullPointerException     if {@code name} or {@code value} is {@code null}
-     * @see #env(Map)
      */
     public JBangOperation env(String name, String value) {
         env_.put(TextTools.requireNotBlank(name, "env name"),
@@ -281,15 +370,11 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Adds environment variables.
-     * <p>
-     * These variables are merged with the current process environment. Existing variables
-     * with the same name are overridden.
+     * Adds environment variables, merged with the current process environment.
      *
-     * @param vars the map of environment variables, must not be null and must not contain null keys or values
+     * @param vars the environment variables
      * @return this operation instance
-     * @throws NullPointerException if {@code vars} is {@code null}, or if {@code vars} contains a null key or value
-     * @see #env(String, String)
+     * @throws NullPointerException if {@code vars} is {@code null} or contains {@code null}
      */
     public JBangOperation env(Map<String, String> vars) {
         env_.putAll(ObjectTools.requireNonNull(vars, "env"));
@@ -297,22 +382,20 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Returns the environment variables.
-     * <p>
-     * The returned map is mutable and can be modified directly before calling {@link #execute()}.
+     * Returns the live environment variables map.
      *
-     * @return the mutable environment variables map, never null
+     * @return the mutable environment variables map
      */
     public Map<String, String> env() {
         return env_;
     }
 
     /**
-     * Configures whether the operation should exit upon a JBang execution failure.
+     * Sets whether to exit upon JBang execution failure.
      * <p>
-     * Default value is {@code true}
+     * Default is {@code true}.
      *
-     * @param exitOnFailure {@code true} if the operation should exit on failure, {@code false} otherwise
+     * @param exitOnFailure {@code true} to exit on failure
      * @return this operation instance
      */
     public JBangOperation exitOnFailure(boolean exitOnFailure) {
@@ -321,26 +404,38 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Configures a JBang operation from a {@link BaseProject}.
+     * Enables or disables fresh (non-cached) resource resolution.
      * <p>
-     * Sets the following from the project:
-     * <ul>
-     *     <li>{@link #workDir() workDir} to the project's directory, if not already set</li>
-     *     <li>{@link #jBangHome() jBangHome} to the {@code JBANG_HOME} environment variable, if not
-     *     already set. A caller-set value always takes precedence over the environment variable.</li>
-     * </ul>
+     * Corresponds to {@code --fresh}.
      *
-     * @param project the project to configure the operation from
+     * @param fresh {@code true} to force fresh resolution
      * @return this operation instance
-     * @throws NullPointerException if the {@code project} is {@code null}
+     * @since 1.1
+     */
+    public JBangOperation fresh(boolean fresh) {
+        return optBool("--fresh", fresh);
+    }
+
+    /**
+     * Configures the operation from a {@link BaseProject}.
+     * <p>
+     * Sets {@link #workDir() workDir} from the project if not already configured. When
+     * neither {@link #jBangHome(File) jBangHome} nor {@link #useDownloadedJBang() useDownloadedJBang()}
+     * has been configured, the {@code JBANG_HOME} environment variable is consulted and,
+     * when set, used as the JBang home directory. The project is retained for sandbox
+     * downloads.
+     *
+     * @param project the project
+     * @return this operation instance
+     * @throws NullPointerException if {@code project} is {@code null}
      */
     public JBangOperation fromProject(BaseProject project) {
-        ObjectTools.requireNonNull(project, "fromProject");
+        project_ = ObjectTools.requireNonNull(project, "fromProject");
         if (workDir_ == null) {
             workDir_ = project.workDirectory().getAbsoluteFile();
         }
 
-        if (jBangHome_ == null) {
+        if (jBangHome_ == null && !useDownloadedJBang_) {
             var jbangHomeEnv = System.getenv("JBANG_HOME");
             if (jbangHomeEnv != null) {
                 jBangHome_ = new File(jbangHomeEnv);
@@ -350,18 +445,14 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Configures whether the child process should inherit the I/O streams of the current JVM.
+     * Sets whether the child process inherits the current JVM's I/O streams.
      * <p>
-     * When {@code true}, the child process uses the same stdin, stdout, and stderr as the current
-     * Java process. This enables interactive commands, preserves ANSI colors, and allows progress
-     * bars to display correctly. Output is <em>not</em> captured by the logger and cannot be asserted in tests.
+     * When {@code true}, output is not captured. When {@code false}, stdout and stderr are
+     * merged and passed to the {@link #outputConsumer(Consumer) output consumer}.
      * <p>
-     * When {@code false}, stdout and stderr are merged and captured through the logger. This makes
-     * output testable and keeps it in the build log, but breaks interactive prompts and ANSI formatting.
-     * <p>
-     * Default is {@code TRUE}
+     * Default is {@code true}.
      *
-     * @param inheritIO {@code true} to inherit I/O, {@code false} to capture output
+     * @param inheritIO {@code true} to inherit I/O
      * @return this operation instance
      */
     public JBangOperation inheritIO(boolean inheritIO) {
@@ -370,21 +461,31 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Checks whether the operation is configured to exit upon a JBang execution failure.
+     * Enables or disables trusting all SSL certificates.
      * <p>
-     * Default value is {@code true}
+     * Corresponds to {@code --insecure}.
      *
-     * @return {@code true} if the operation is set to exit on failure, {@code false} otherwise.
+     * @param insecure {@code true} to trust all certificates
+     * @return this operation instance
+     * @since 1.1
+     */
+    public JBangOperation insecure(boolean insecure) {
+        return optBool("--insecure", insecure);
+    }
+
+    /**
+     * Returns whether to exit upon JBang execution failure.
+     *
+     * @return {@code true} if the operation exits on failure
      */
     public boolean isExitOnFailure() {
         return exitOnFailure_;
     }
 
     /**
-     * Returns whether the child process inherits the I/O streams of the current JVM.
+     * Returns whether the child process inherits the current JVM's I/O streams.
      *
-     * @return {@code true} if I/O is inherited (default), {@code false} if {@code stderr} is redirected
-     * to {@code stdout}
+     * @return {@code true} if I/O is inherited
      * @see #inheritIO(boolean)
      */
     public boolean isInheritIO() {
@@ -392,12 +493,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Sets the arguments to be used when running the {@link #script(String) script}
+     * Adds the arguments passed to JBang itself, before the script.
      *
-     * @param args the arguments to use when running the script
+     * @param args the JBang arguments
      * @return this operation instance
-     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
-     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
+     * @throws NullPointerException     if {@code args} is {@code null} or contains {@code null}
+     * @throws IllegalArgumentException if {@code args} is empty or contains empty elements
      */
     public JBangOperation jBangArgs(Collection<String> args) {
         jBangArgs_.addAll(TextTools.requireNotEmpty(args, "jBangArgs"));
@@ -405,12 +506,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Sets one or more arguments to be used when running the script.
+     * Adds the arguments passed to JBang itself, before the script.
      *
-     * @param args the arguments to use when running the script
+     * @param args the JBang arguments
      * @return this operation instance
-     * @throws NullPointerException     if the {@code args} is {@code null} or contains {@code null} elements
-     * @throws IllegalArgumentException if the {@code args} is empty, or contains empty elements
+     * @throws NullPointerException     if {@code args} is {@code null} or contains {@code null}
+     * @throws IllegalArgumentException if {@code args} is empty or contains empty elements
      */
     public JBangOperation jBangArgs(String... args) {
         jBangArgs_.addAll(List.of(TextTools.requireNotEmpty("jBangArgs", args)));
@@ -418,19 +519,20 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Retrieves the live collection of arguments to be used when running the script.
-     * <p>
-     * The returned list is the operation's internal list. Callers may add to it directly;
-     * this is intentional by design (builder pattern).
+     * Returns the live list of JBang arguments.
      *
-     * @return the mutable list of JBang arguments
+     * @return the mutable JBang arguments list
      */
     public List<String> jBangArgs() {
         return jBangArgs_;
     }
 
     /**
-     * Sets the JBang home directory.
+     * Sets the JBang home directory, resolved under its {@code bin/} directory.
+     * <p>
+     * Used as the launcher when no explicit {@link #version(Version) version} is configured.
+     * Takes precedence over the sandbox-downloaded latest distribution, and cancels any
+     * previous {@link #useDownloadedJBang() useDownloadedJBang()} call.
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
@@ -440,11 +542,16 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     public JBangOperation jBangHome(String jBangHome) {
         TextTools.requireNotBlank(jBangHome, "jBangHome");
         jBangHome_ = new File(jBangHome);
+        useDownloadedJBang_ = false;
         return this;
     }
 
     /**
-     * Sets the JBang home directory.
+     * Sets the JBang home directory, resolved under its {@code bin/} directory.
+     * <p>
+     * Used as the launcher when no explicit {@link #version(Version) version} is configured.
+     * Takes precedence over the sandbox-downloaded latest distribution, and cancels any
+     * previous {@link #useDownloadedJBang() useDownloadedJBang()} call.
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
@@ -453,11 +560,16 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     public JBangOperation jBangHome(File jBangHome) {
         ObjectTools.requireNonNull(jBangHome, "jBangHome");
         jBangHome_ = jBangHome;
+        useDownloadedJBang_ = false;
         return this;
     }
 
     /**
-     * Sets the JBang home directory.
+     * Sets the JBang home directory, resolved under its {@code bin/} directory.
+     * <p>
+     * Used as the launcher when no explicit {@link #version(Version) version} is configured.
+     * Takes precedence over the sandbox-downloaded latest distribution, and cancels any
+     * previous {@link #useDownloadedJBang() useDownloadedJBang()} call.
      *
      * @param jBangHome the JBang home directory
      * @return this operation instance
@@ -466,11 +578,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     public JBangOperation jBangHome(Path jBangHome) {
         ObjectTools.requireNonNull(jBangHome, "jBangHome");
         jBangHome_ = jBangHome.toFile();
+        useDownloadedJBang_ = false;
         return this;
     }
 
     /**
-     * Retrieves the JBang home directory.
+     * Returns the JBang home directory.
      *
      * @return the JBang home directory
      */
@@ -480,13 +593,85 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Sets a consumer to receive output lines when not inheriting I/O.
+     * Sets the {@code .netrc} file used for HTTP authentication.
      * <p>
-     * Only called when {@link #isInheritIO()} is {@code false}. Default logs at INFO level.
+     * Corresponds to {@code --netrc}.
      *
-     * @param outputConsumer the output consumer, must not be null
+     * @param file the {@code .netrc} file path
      * @return this operation instance
-     * @throws NullPointerException if outputConsumer is {@code null}
+     * @throws NullPointerException     if {@code file} is {@code null}
+     * @throws IllegalArgumentException if {@code file} is blank
+     * @since 1.1
+     */
+    public JBangOperation netrc(String file) {
+        TextTools.requireNotBlank(file, "netrc");
+        return netrc(new File(file));
+    }
+
+    /**
+     * Sets the {@code .netrc} file used for HTTP authentication.
+     * <p>
+     * Corresponds to {@code --netrc}.
+     *
+     * @param file the {@code .netrc} file
+     * @return this operation instance
+     * @throws NullPointerException if {@code file} is {@code null}
+     * @since 1.1
+     */
+    public JBangOperation netrc(File file) {
+        ObjectTools.requireNonNull(file, "netrc");
+        return opt("--netrc", file.getAbsolutePath());
+    }
+
+    /**
+     * Sets the {@code .netrc} file used for HTTP authentication.
+     * <p>
+     * Corresponds to {@code --netrc}.
+     *
+     * @param file the {@code .netrc} file path
+     * @return this operation instance
+     * @throws NullPointerException if {@code file} is {@code null}
+     * @since 1.1
+     */
+    public JBangOperation netrc(Path file) {
+        ObjectTools.requireNonNull(file, "netrc");
+        return netrc(file.toFile());
+    }
+
+    /**
+     * Enables or disables {@code .netrc} authentication lookup.
+     * <p>
+     * Corresponds to {@code --no-netrc}.
+     *
+     * @param noNetrc {@code true} to disable {@code .netrc} lookup
+     * @return this operation instance
+     * @since 1.1
+     */
+    public JBangOperation noNetrc(boolean noNetrc) {
+        return optBool("--no-netrc", noNetrc);
+    }
+
+    /**
+     * Enables or disables offline mode.
+     * <p>
+     * Corresponds to {@code --offline}.
+     *
+     * @param offline {@code true} to work offline
+     * @return this operation instance
+     * @since 1.1
+     */
+    public JBangOperation offline(boolean offline) {
+        return optBool("--offline", offline);
+    }
+
+    /**
+     * Sets the consumer receiving output lines when not inheriting I/O.
+     * <p>
+     * Default logs at INFO level.
+     *
+     * @param outputConsumer the output consumer
+     * @return this operation instance
+     * @throws NullPointerException if {@code outputConsumer} is {@code null}
      */
     public JBangOperation outputConsumer(Consumer<String> outputConsumer) {
         ObjectTools.requireNonNull(outputConsumer, "outputConsumer");
@@ -495,22 +680,29 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Resets the script-related state of the operation to its default values.
+     * Enables or disables quiet mode.
      * <p>
-     * Specifically, this method:
-     * <ul>
-     *     <li>Clears all {@link #args() script arguments}</li>
-     *     <li>Clears all {@link #env() environment variables}</li>
-     *     <li>Clears all {@link #jBangArgs() JBang arguments}</li>
-     *     <li>Resets the {@link #isExitOnFailure() exit on failure flag} to {@code true}</li>
-     *     <li>Clears the assigned {@link #script() script}</li>
-     * </ul>
+     * Corresponds to {@code --quiet}.
+     *
+     * @param quiet {@code true} to suppress non-error output
+     * @return this operation instance
+     */
+    public JBangOperation quiet(boolean quiet) {
+        return optBool("--quiet", quiet);
+    }
+
+    /**
+     * Resets the script-related state: {@link #args() args}, {@link #env() env},
+     * {@link #jBangArgs() JBang arguments}, {@link #isExitOnFailure() exitOnFailure}, and
+     * {@link #script() script}.
      * <p>
-     * The following are intentionally preserved across resets, as they are typically set once
-     * via {@link #fromProject(BaseProject) fromProject} and shared across multiple script
-     * executions: {@link #workDir() workDir}, {@link #jBangHome() jBangHome},
-     * {@link #timeout() timeout}, {@link #isInheritIO() inheritIO}, and the
-     * {@link #outputConsumer(Consumer) outputConsumer}.
+     * {@link #workDir() workDir}, {@link #jBangHome() jBangHome},
+     * {@link #useDownloadedJBang() useDownloadedJBang}, {@link #timeout() timeout},
+     * {@link #isInheritIO() inheritIO}, the
+     * {@link #outputConsumer(Consumer) output consumer}, {@link #version() version}, and the
+     * project configured via {@link #fromProject(BaseProject) fromProject} are preserved.
+     *
+     * @since 1.1
      */
     public void reset() {
         args_.clear();
@@ -521,9 +713,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Sets the script to be executed.
+     * Sets the script to execute.
      *
-     * @param script the script to execute
+     * @param script the script
      * @return this operation instance
      * @throws NullPointerException     if {@code script} is {@code null}
      * @throws IllegalArgumentException if {@code script} is blank
@@ -534,9 +726,9 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Retrieves the script that has been set for execution.
+     * Returns the script to execute.
      *
-     * @return the script to be executed or {@code null}
+     * @return the script, or {@code null}
      */
     @Nullable
     public String script() {
@@ -544,18 +736,26 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Sets the timeout for JBang execution in seconds.
+     * Enables or disables printing stack traces to stderr, even when quiet.
      * <p>
-     * If the process does not complete within the specified timeout, it will be terminated
-     * and the operation will fail. If set to any negative value, the process will wait indefinitely.
-     * Passing {@code 0} is not allowed; use a negative value to indicate no timeout.
-     * <p>
-     * Default is {@code 600} seconds (10 minutes)
+     * Corresponds to {@code --stacktrace}.
      *
-     * @param seconds the timeout in seconds (positive); use a negative value for no timeout
+     * @param stacktrace {@code true} to print stack traces
+     * @return this operation instance
+     * @since 1.1
+     */
+    public JBangOperation stacktrace(boolean stacktrace) {
+        return optBool("--stacktrace", stacktrace);
+    }
+
+    /**
+     * Sets the execution timeout in seconds.
+     * <p>
+     * A negative value means no timeout. {@code 0} is rejected. Default is {@code 600}.
+     *
+     * @param seconds the timeout in seconds
      * @return this operation instance
      * @throws IllegalArgumentException if {@code seconds} is {@code 0}
-     * @since 1.2
      */
     public JBangOperation timeout(long seconds) {
         if (seconds == 0) {
@@ -567,22 +767,88 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Retrieves the timeout for JBang execution in seconds.
-     * <p>
-     * A positive value is the timeout duration in seconds. A negative value indicates no timeout
-     * (wait indefinitely). {@code 0} is not a valid state; the setter disallows it.
+     * Returns the execution timeout in seconds.
      *
-     * @return the timeout in seconds (positive), or a negative value if no timeout is set
-     * @since 1.2
+     * @return the timeout in seconds; negative for no timeout
      */
     public long timeout() {
         return timeout_;
     }
 
     /**
-     * Retrieves the working directory.
+     * Forces the use of a sandbox-downloaded JBang distribution, ignoring any local JBang
+     * installation (including one inherited from the {@code JBANG_HOME} environment
+     * variable).
+     * <p>
+     * When combined with {@link #version(Version) version}, the specified version is
+     * downloaded. Otherwise, the latest version is fetched.
+     * <p>
+     * The setting is canceled by a subsequent {@link #jBangHome(File) jBangHome} call.
+     * A {@link BaseProject} must be configured via
+     * {@link #fromProject(BaseProject) fromProject} for the download to have a destination;
+     * without one, the operation falls back to the {@code PATH}-resolved JBang.
      *
-     * @return the directory
+     * @return this operation instance
+     * @since 1.1
+     */
+    public JBangOperation useDownloadedJBang() {
+        useDownloadedJBang_ = true;
+        jBangHome_ = null;
+        return this;
+    }
+
+    /**
+     * Sets the JBang version to download into the sandbox.
+     * <p>
+     * When set, that version is downloaded and used instead of any local JBang installation.
+     * When left {@code null} (the default), the latest version is resolved (and cached)
+     * unless a local JBang is available, in which case it is used unless
+     * {@link #useDownloadedJBang() useDownloadedJBang()} forces the download.
+     *
+     * @param version the version
+     * @return this operation instance
+     * @throws NullPointerException if {@code version} is {@code null}
+     * @since 1.1
+     */
+    public JBangOperation version(Version version) {
+        version_ = ObjectTools.requireNonNull(version, "version");
+        return this;
+    }
+
+    /**
+     * Sets the JBang version to download into the sandbox.
+     * <p>
+     * When set, that version is downloaded and used instead of any local JBang installation.
+     * When left {@code null} (the default), the latest version is resolved (and cached)
+     * unless a local JBang is available, in which case it is used unless
+     * {@link #useDownloadedJBang() useDownloadedJBang()} forces the download.
+     *
+     * @param version the version
+     * @return this operation instance
+     * @throws NullPointerException     if {@code version} is {@code null}
+     * @throws IllegalArgumentException if {@code version} is blank or malformed
+     * @since 1.1
+     */
+    public JBangOperation version(String version) {
+        version_ = VersionNumber.parse(TextTools.requireNotBlank(version, "version"));
+        return this;
+    }
+
+    /**
+     * Returns the JBang version to download into the sandbox.
+     *
+     * @return the version, or {@code null} when the latest version is resolved automatically
+     * @since 1.1
+     */
+    @Nullable
+    public Version version() {
+        return version_;
+    }
+
+    /**
+     * Returns the working directory.
+     *
+     * @return the working directory, or {@code null}
      */
     @Nullable
     public File workDir() {
@@ -590,7 +856,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Provides the working directory if it differs from the project's directory.
+     * Sets the working directory.
      *
      * @param dir the directory
      * @return this operation instance
@@ -602,7 +868,7 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Provides the working directory if it differs from the project's directory.
+     * Sets the working directory.
      *
      * @param dir the directory
      * @return this operation instance
@@ -615,12 +881,12 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Provides the working directory if it differs from the project's directory.
+     * Sets the working directory.
      *
      * @param dir the directory path
      * @return this operation instance
-     * @throws IllegalArgumentException if {@code dir} is blank
      * @throws NullPointerException     if {@code dir} is {@code null}
+     * @throws IllegalArgumentException if {@code dir} is blank
      */
     public JBangOperation workDir(String dir) {
         TextTools.requireNotBlank(dir, "workDir");
@@ -629,29 +895,339 @@ public class JBangOperation extends AbstractOperation<JBangOperation> {
     }
 
     /**
-     * Finds the JBang executable path.
+     * Builds the launcher prefix of the JBang command.
      * <p>
-     * If {@link #jBangHome() jBangHome} is set, resolves the executable under its {@code bin/}
-     * directory and verifies it is executable, failing fast with a clear message if not.
-     * If {@code jBangHome} is not set, returns the bare executable name ({@code jbang} or
-     * {@code jbang.cmd} on Windows) and relies on {@code PATH} resolution at process launch.
+     * Resolution order:
+     * <ol>
+     *     <li>A specific {@link #version(Version) version}, when configured and a project is
+     *     available: downloads that version into the sandbox and uses it, regardless of any
+     *     local JBang installation.</li>
+     *     <li>{@link #jBangHome() jBangHome}, when set.</li>
+     *     <li>{@link #useDownloadedJBang() useDownloadedJBang()} with a project: downloads
+     *     the latest JBang distribution into the sandbox.</li>
+     *     <li>When a project is available, a {@code jbang} executable found on the
+     *     {@code PATH}, falling back to the latest JBang distribution downloaded into
+     *     the sandbox.</li>
+     *     <li>Otherwise, the bare {@code jbang} name, resolved via {@code PATH} by the
+     *     operating system when the process is spawned.</li>
+     * </ol>
+     * <p>
+     * When an explicit version is requested but cannot be applied (no project), a warning
+     * is logged and the fallback is used.
      *
-     * @return the absolute path to the JBang executable, or the bare name if relying on PATH
-     * @throws ExitStatusException if the resolved executable is not found or not executable
+     * @return the launcher command prefix
+     * @throws ExitStatusException if a configured launcher is missing or not executable
      */
-    private String findJBangExec() throws ExitStatusException {
-        var jbang = isWindows() ? "jbang.cmd" : "jbang";
-        if (jBangHome_ == null) {
-            return jbang;
+    List<String> buildJBangCommand() throws ExitStatusException {
+        var command = new ArrayList<String>();
+        var launcher = isWindows() ? "jbang.cmd" : "jbang";
+
+        if (version_ != null) {
+            if (project_ != null) {
+                command.add(resolveExecFromHome(downloadJBangDistribution(), launcher));
+            } else if (jBangHome_ != null) {
+                warnExplicitVersionIgnored("the configured JBang home");
+                command.add(resolveExecFromHome(jBangHome_, launcher));
+            } else {
+                warnExplicitVersionIgnored("the PATH-resolved JBang");
+                command.add(pathLauncherOrFallback(launcher));
+            }
+        } else if (jBangHome_ != null) {
+            command.add(resolveExecFromHome(jBangHome_, launcher));
+        } else if (useDownloadedJBang_) {
+            if (project_ != null) {
+                command.add(resolveExecFromHome(downloadJBangDistribution(), launcher));
+            } else {
+                if (logger.isLoggable(Level.WARNING) && !silent()) {
+                    logger.warning("A downloaded JBang was requested but no project is available; "
+                            + "falling back to the PATH-resolved JBang.");
+                }
+                command.add(pathLauncherOrFallback(launcher));
+            }
+        } else if (project_ != null) {
+            var pathExec = findOnPath(launcher);
+            if (pathExec != null) {
+                command.add(pathExec);
+            } else {
+                command.add(resolveExecFromHome(downloadJBangDistribution(), launcher));
+            }
+        } else {
+            command.add(launcher);
         }
 
-        var exec = Path.of(jBangHome_.getAbsolutePath(), "bin", jbang).toFile();
-        if (!exec.canExecute()) {
+        if (logger.isLoggable(Level.INFO) && !silent()) {
+            logger.info("Using JBang executable: " + command.get(0));
+        }
+
+        return command;
+    }
+
+    /**
+     * Downloads and extracts the JBang distribution into the project sandbox.
+     *
+     * @return the extracted JBang home directory
+     * @throws ExitStatusException if the version cannot be resolved, or download or extraction fails
+     */
+    @SuppressWarnings("PMD.PreserveStackTrace")
+    @SuppressFBWarnings("LEST_LOST_EXCEPTION_STACK_TRACE")
+    private File downloadJBangDistribution() throws ExitStatusException {
+        var project = ObjectTools.requireNonNull(project_, "project");
+        var version = resolveJBangVersion(project);
+        try {
+            var url = URI.create(String.format(JBANG_RELEASES_URL, version, version)).toURL();
+            var sandbox = new Sandbox("bld-jbang", project, silent());
+            var extracted = sandbox.downloadZip(url, version);
+            var home = new File(extracted.toFile(), "jbang-" + version);
+            if (!home.isDirectory()) {
+                if (logger.isLoggable(Level.SEVERE) && !silent()) {
+                    logger.severe("JBang distribution layout not recognized: " + home.getAbsolutePath());
+                }
+                throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+            }
+            return home;
+        } catch (IOException e) {
             if (logger.isLoggable(Level.SEVERE) && !silent()) {
-                logger.severe("JBang executable not found or not executable: " + exec.getAbsolutePath());
+                logger.log(Level.SEVERE, e.getLocalizedMessage(), e);
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+        }
+    }
+
+    /**
+     * Fetches the latest JBang version from the release server, with connect and read
+     * timeouts, validating the result.
+     *
+     * @return the validated latest version
+     * @throws IOException if the fetch fails, the response is empty, or the version is malformed
+     */
+    private String fetchLatestJBangVersion() throws IOException {
+        var connection = URI.create(JBANG_LATEST_VERSION_URL).toURL().openConnection();
+        connection.setConnectTimeout(VERSION_FETCH_TIMEOUT_MILLIS);
+        connection.setReadTimeout(VERSION_FETCH_TIMEOUT_MILLIS);
+        String version;
+        try (var in = connection.getInputStream()) {
+            version = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
+        }
+        if (version.isEmpty()) {
+            throw new IOException("Empty version response from " + JBANG_LATEST_VERSION_URL);
+        }
+        try {
+            return VersionNumber.parse(version).toString();
+        } catch (IllegalArgumentException e) {
+            throw new IOException(
+                    "Invalid JBang version from " + JBANG_LATEST_VERSION_URL + ": " + version, e);
+        }
+    }
+
+    /**
+     * Searches the {@code PATH} for an executable.
+     *
+     * @param launcher the executable name
+     * @return the absolute path to the executable, or {@code null} when not found
+     */
+    @Nullable
+    private String findOnPath(String launcher) {
+        var path = System.getenv("PATH");
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        for (var entry : path.split(File.pathSeparator)) {
+            if (entry.isBlank()) {
+                continue;
+            }
+            try {
+                var candidate = Path.of(entry, launcher);
+                if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+                    return candidate.toAbsolutePath().toString();
+                }
+            } catch (InvalidPathException ignored) {
+                // malformed PATH entry (e.g. quoted entries on Windows): skip it
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns whether the operation is configured to run offline.
+     *
+     * @return {@code true} if {@code --offline} is among the JBang arguments
+     */
+    private boolean isOffline() {
+        return jBangArgs_.contains("--offline");
+    }
+
+    /**
+     * Adds or replaces a {@code --option=value} argument.
+     *
+     * @param option the option name
+     * @param value  the option value
+     * @return this operation instance
+     */
+    private JBangOperation opt(String option, String value) {
+        jBangArgs_.removeIf(arg -> arg.equals(option) || arg.startsWith(option + "="));
+        jBangArgs_.add(option + "=" + value);
+        return this;
+    }
+
+    /**
+     * Adds or removes a flag argument.
+     *
+     * @param option the option name
+     * @param enable {@code true} to add the flag, {@code false} to remove it
+     * @return this operation instance
+     */
+    private JBangOperation optBool(String option, boolean enable) {
+        jBangArgs_.remove(option);
+        if (enable) {
+            jBangArgs_.add(option);
+        }
+        return this;
+    }
+
+    /**
+     * Resolves the launcher via the {@code PATH}, falling back to the bare name.
+     *
+     * @param launcher the launcher name
+     * @return the absolute path if found on the {@code PATH}, otherwise {@code launcher}
+     */
+    private String pathLauncherOrFallback(String launcher) {
+        var found = findOnPath(launcher);
+        return found != null ? found : launcher;
+    }
+
+    /**
+     * Reads the cached latest JBang version from the project build directory.
+     *
+     * @param project the non-null project whose build directory hosts the version cache
+     * @return the cached version, or {@code null} when absent or unreadable
+     */
+    @Nullable
+    private String readCachedLatestVersion(BaseProject project) {
+        var cacheFile = project.buildDirectory().toPath().resolve(LATEST_VERSION_CACHE_FILE);
+        if (!Files.isRegularFile(cacheFile)) {
+            return null;
+        }
+        try {
+            var value = Files.readString(cacheFile, StandardCharsets.UTF_8).trim();
+            if (value.isEmpty()) {
+                return null;
+            }
+            return VersionNumber.parse(value).toString();
+        } catch (IOException | IllegalArgumentException e) {
+            if (logger.isLoggable(Level.FINE) && !silent()) {
+                logger.log(Level.FINE, "Ignoring unreadable JBang version cache: " + cacheFile, e);
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Resolves the JBang launcher under the given home's {@code bin/} directory, verifying
+     * it is executable.
+     *
+     * @param home  the JBang home directory
+     * @param jbang the launcher name
+     * @return the absolute path to the launcher
+     * @throws ExitStatusException if the launcher is missing or not executable
+     */
+    private String resolveExecFromHome(File home, String jbang) throws ExitStatusException {
+        var exec = Path.of(home.getAbsolutePath(), "bin", jbang).toFile();
+        if (!exec.isFile()) {
+            if (logger.isLoggable(Level.SEVERE) && !silent()) {
+                logger.severe("JBang executable not found: " + exec.getAbsolutePath());
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+        }
+        if (!exec.canExecute() && !exec.setExecutable(true)) {
+            if (logger.isLoggable(Level.SEVERE) && !silent()) {
+                logger.severe("JBang executable not executable and could not be made executable: "
+                        + exec.getAbsolutePath());
             }
             throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
         }
         return exec.getAbsolutePath();
+    }
+
+    /**
+     * Resolves the JBang version to download.
+     * <p>
+     * When a version is explicitly configured, it is returned. Otherwise, the latest version
+     * is fetched from the release server, using the persistent cache when offline or when
+     * the fetch fails.
+     *
+     * @param project the non-null project whose build directory hosts the version cache
+     * @return the configured version, or the latest from the release server
+     * @throws ExitStatusException if the latest version cannot be resolved
+     */
+    @SuppressWarnings("PMD.PreserveStackTrace")
+    private String resolveJBangVersion(BaseProject project) throws ExitStatusException {
+        if (version_ != null) {
+            return version_.toString();
+        }
+        if (resolvedLatestVersion_ != null) {
+            return resolvedLatestVersion_;
+        }
+        var cached = readCachedLatestVersion(project);
+        if (isOffline()) {
+            if (cached != null) {
+                resolvedLatestVersion_ = cached;
+                return cached;
+            }
+            if (logger.isLoggable(Level.SEVERE) && !silent()) {
+                logger.severe("Cannot resolve the latest JBang version while offline; configure an "
+                        + "explicit version or run online once to populate the cache.");
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+        }
+        try {
+            var fetched = fetchLatestJBangVersion();
+            resolvedLatestVersion_ = fetched;
+            writeCachedLatestVersion(project, fetched);
+            return fetched;
+        } catch (IOException e) {
+            if (cached != null) {
+                if (logger.isLoggable(Level.WARNING) && !silent()) {
+                    logger.log(Level.WARNING, "Failed to fetch the latest JBang version; "
+                            + "using cached version " + cached, e);
+                }
+                resolvedLatestVersion_ = cached;
+                return cached;
+            }
+            if (logger.isLoggable(Level.SEVERE) && !silent()) {
+                logger.log(Level.SEVERE, e.getLocalizedMessage(), e);
+            }
+            throw new ExitStatusException(ExitStatusException.EXIT_FAILURE);
+        }
+    }
+
+    /**
+     * Logs that an explicit version was requested but could not be applied.
+     *
+     * @param fallback the fallback that will be used
+     */
+    private void warnExplicitVersionIgnored(String fallback) {
+        if (logger.isLoggable(Level.WARNING) && !silent()) {
+            logger.warning("An explicit JBang version was requested but no project is available "
+                    + "for downloading; falling back to " + fallback + ".");
+        }
+    }
+
+    /**
+     * Persists the resolved latest JBang version to the project build directory.
+     *
+     * @param project the non-null project whose build directory hosts the version cache
+     * @param version the resolved version
+     */
+    private void writeCachedLatestVersion(BaseProject project, String version) {
+        var buildDir = project.buildDirectory().toPath();
+        var cacheFile = buildDir.resolve(LATEST_VERSION_CACHE_FILE);
+        try {
+            Files.createDirectories(buildDir);
+            Files.writeString(cacheFile, version, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            if (logger.isLoggable(Level.FINE) && !silent()) {
+                logger.log(Level.FINE, "Failed to write JBang version cache: " + cacheFile, e);
+            }
+        }
     }
 }

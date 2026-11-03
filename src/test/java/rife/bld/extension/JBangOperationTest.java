@@ -29,12 +29,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import rife.bld.BaseProject;
+import rife.bld.dependencies.Repository;
+import rife.bld.dependencies.Version;
+import rife.bld.dependencies.VersionNumber;
 import rife.bld.extension.tools.SystemTools;
 import rife.bld.operations.exceptions.ExitStatusException;
-import rife.bld.testing.EnabledOnCi;
-import rife.bld.testing.LoggingExtension;
-import rife.bld.testing.RandomString;
-import rife.bld.testing.TestLogHandler;
+import rife.bld.testing.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,11 +44,13 @@ import java.time.Duration;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @ExtendWith(LoggingExtension.class)
-@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "DataFlowIssue"})
+@SuppressWarnings({"PMD.AvoidDuplicateLiterals", "DataFlowIssue", "PMD.ExcessiveImports"})
 class JBangOperationTest {
 
     @SuppressWarnings("LoggerInitializedWithForeignClass")
@@ -63,9 +65,275 @@ class JBangOperationTest {
             Level.ALL
     );
 
+    private static Path createLauncher(Path home) throws IOException {
+        var bin = home.resolve("bin");
+        Files.createDirectories(bin);
+        var launcher = bin.resolve(launcherName());
+        Files.writeString(launcher, "#!/bin/sh\n");
+        assertTrue(launcher.toFile().setExecutable(true));
+        return launcher;
+    }
+
+    private static boolean isJBangOnPath() {
+        var path = System.getenv("PATH");
+        if (path == null) {
+            return false;
+        }
+        var launcher = launcherName();
+        return Arrays.stream(path.split(File.pathSeparator))
+                .filter(entry -> !entry.isBlank())
+                .map(entry -> new File(entry, launcher))
+                .anyMatch(file -> file.isFile() && file.canExecute());
+    }
+
+    private static String launcherName() {
+        return JBangOperation.isWindows() ? "jbang.cmd" : "jbang";
+    }
+
     @BeforeEach
     void beforeEach() {
         testLogHandler.clear();
+        logger.setLevel(Level.ALL);
+    }
+
+    private JBangOperation newJBangOperation() {
+        return new JBangOperation().fromProject(new TestProject());
+    }
+
+    @SuppressWarnings("PMD")
+    static class TempDirProject extends TestProject {
+
+        TempDirProject(Path dir) {
+            workDirectory = dir.toFile();
+        }
+    }
+
+    @SuppressWarnings("PMD")
+    static class TestProject extends BaseProject {
+
+        TestProject() {
+            workDirectory = new File("src/test/resources/TestProject");
+            pkg = "com.example";
+            name = "TestProject";
+            version = version(0, 1, 0);
+
+            autoDownloadPurge = true;
+
+            repositories = List.of(Repository.MAVEN_CENTRAL);
+        }
+    }
+
+    @Nested
+    @DisplayName("Command Construction Tests")
+    class CommandConstructionTests {
+
+        @Test
+        void explicitVersionOverridesJBangHome(@TempDir Path tempDir) throws Exception {
+            var bin = tempDir.resolve("bin");
+            Files.createDirectories(bin);
+            var launcher = bin.resolve(JBangOperation.isWindows() ? "jbang.cmd" : "jbang");
+            Files.writeString(launcher, "#!/bin/sh\n");
+            assertTrue(launcher.toFile().setExecutable(true));
+
+            var op = newJBangOperation()
+                    .jBangHome(tempDir.toFile())
+                    .version("0.142.0");
+
+            var command = op.buildJBangCommand();
+            assertTrue(command.get(0).contains("jbang-0.142.0"),
+                    "explicit version must override local jBangHome: " + command.get(0));
+            assertNotEquals(launcher.toFile().getAbsolutePath(), command.get(0),
+                    "local launcher must not be used when an explicit version is set");
+        }
+
+        @Test
+        void explicitVersionWarningSuppressedWhenSilent() throws Exception {
+            new JBangOperation().silent(true).version("0.142.0").buildJBangCommand();
+            assertTrue(testLogHandler.isEmpty());
+        }
+
+        @Test
+        void explicitVersionWithoutProjectFallsBackToJBangHomeWithWarning(@TempDir Path tempDir)
+                throws Exception {
+            var launcher = createLauncher(tempDir);
+            var op = new JBangOperation().jBangHome(tempDir.toFile()).version("0.142.0");
+
+            var command = op.buildJBangCommand();
+            assertEquals(launcher.toFile().getAbsolutePath(), command.get(0));
+            assertTrue(testLogHandler.containsMessage("explicit JBang version was requested"));
+            assertTrue(testLogHandler.containsMessage("configured JBang home"));
+        }
+
+        @Test
+        void explicitVersionWithoutProjectFallsBackToPathWithWarning() throws Exception {
+            var op = new JBangOperation().version("0.142.0");
+
+            var command = op.buildJBangCommand();
+            assertTrue(command.get(0).endsWith(launcherName()),
+                    "PATH fallback must resolve the jbang launcher: " + command.get(0));
+            assertTrue(testLogHandler.containsMessage("explicit JBang version was requested"));
+            assertTrue(testLogHandler.containsMessage("PATH-resolved JBang"));
+        }
+
+        @Test
+        void jBangHomeBranchTakesPrecedence(@TempDir Path tempDir) throws Exception {
+            var bin = tempDir.resolve("bin");
+            Files.createDirectories(bin);
+            var launcher = bin.resolve(JBangOperation.isWindows() ? "jbang.cmd" : "jbang");
+            Files.writeString(launcher, "#!/bin/sh\n");
+            assertTrue(launcher.toFile().setExecutable(true));
+
+            var op = newJBangOperation().jBangHome(tempDir.toFile());
+
+            var command = op.buildJBangCommand();
+            assertEquals(launcher.toFile().getAbsolutePath(), command.get(0),
+                    "jBangHome launcher must win: " + String.join(" ", command));
+        }
+
+        @Test
+        void jBangHomeCancelsUseDownloadedJBang(@TempDir Path tempDir) throws Exception {
+            var bin = tempDir.resolve("bin");
+            Files.createDirectories(bin);
+            var launcher = bin.resolve(JBangOperation.isWindows() ? "jbang.cmd" : "jbang");
+            Files.writeString(launcher, "#!/bin/sh\n");
+            assertTrue(launcher.toFile().setExecutable(true));
+
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
+                    .jBangHome(tempDir.toFile());
+
+            var command = op.buildJBangCommand();
+            assertEquals(launcher.toFile().getAbsolutePath(), command.get(0),
+                    "jBangHome must cancel useDownloadedJBang(): " + command.get(0));
+        }
+
+        @Test
+        void pathFallbackWhenNoProjectAndNoJBangHome() throws Exception {
+            var op = new JBangOperation().workDir(Path.of(".").toFile());
+
+            var command = op.buildJBangCommand();
+            assertEquals(JBangOperation.isWindows() ? "jbang.cmd" : "jbang", command.get(0),
+                    "PATH fallback must be the bare jbang name: " + String.join(" ", command));
+        }
+
+        @Test
+        void pinnedJBangVersionConstantIsDownloaded() throws Exception {
+            // Pinning the constant must be honored, never treated as "latest".
+            var op = newJBangOperation().version(JBangOperation.JBANG_VERSION);
+
+            var command = op.buildJBangCommand();
+            assertTrue(command.get(0).contains("jbang-" + JBangOperation.JBANG_VERSION),
+                    "pinned JBANG_VERSION must be downloaded: " + command.get(0));
+        }
+
+        @Test
+        void sandboxBranchUsedWhenNoJBangHome() throws Exception {
+            var op = newJBangOperation().useDownloadedJBang();
+
+            var command = op.buildJBangCommand();
+            var joined = String.join(" ", command);
+
+            assertTrue(command.get(0).contains("bin"),
+                    "sandbox branch must use the extracted wrapper launcher: " + joined);
+            assertTrue(command.get(0).contains("jbang-"),
+                    "sandbox branch must resolve under the extracted distribution: " + joined);
+        }
+
+        @Test
+        void useDownloadedJBangClearsJBangHome() {
+            var op = new JBangOperation().jBangHome("foo").useDownloadedJBang();
+            assertNull(op.jBangHome());
+        }
+
+        @Test
+        void useDownloadedJBangIsOrderIndependent() throws Exception {
+            // useDownloadedJBang() before fromProject(): env must not repopulate jBangHome_
+            var op = new JBangOperation()
+                    .useDownloadedJBang()
+                    .fromProject(new TestProject());
+
+            var command = op.buildJBangCommand();
+            assertTrue(command.get(0).contains("bin"),
+                    "downloaded JBang must survive a subsequent fromProject(): " + command.get(0));
+            assertTrue(command.get(0).contains("jbang-"),
+                    "downloaded JBang must resolve under the sandbox: " + command.get(0));
+        }
+
+        @Test
+        void useDownloadedJBangWithoutProjectWarnsAndFallsBackToPath() throws Exception {
+            var op = new JBangOperation().useDownloadedJBang();
+
+            var command = op.buildJBangCommand();
+            assertTrue(command.get(0).endsWith(launcherName()),
+                    "PATH fallback must resolve the jbang launcher: " + command.get(0));
+            assertTrue(testLogHandler.containsMessage("downloaded JBang was requested"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Config Tests")
+    class ConfigTests {
+
+        @Test
+        void configAsFile() {
+            var file = new File("/tmp/jbang-config");
+            var op = new JBangOperation().config(file);
+            assertTrue(op.jBangArgs().contains("--config=" + file.getAbsolutePath()));
+        }
+
+        @Test
+        void configAsPath() {
+            var path = Path.of("/tmp/jbang-config");
+            var op = new JBangOperation().config(path);
+            assertTrue(op.jBangArgs().contains("--config=" + path.toFile().getAbsolutePath()));
+        }
+
+        @Test
+        void configAsString() {
+            var op = new JBangOperation().config("/tmp/jbang-config");
+            assertTrue(op.jBangArgs().contains(
+                            "--config=" + new File("/tmp/jbang-config").getAbsolutePath()),
+                    "jBangArgs should contain --config=<absolute path>: " + op.jBangArgs());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"", "  "})
+        void configRejectsBlankString(String value) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JBangOperation().config(value));
+        }
+
+        @Test
+        void configRejectsNullFile() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().config((File) null));
+        }
+
+        @Test
+        void configRejectsNullPath() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().config((Path) null));
+        }
+
+        @Test
+        void configRejectsNullString() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().config((String) null));
+        }
+
+        @Test
+        void configReplacesPreviousValue() {
+            var op = new JBangOperation()
+                    .config("/tmp/first")
+                    .config("/tmp/second");
+            var configs = op.jBangArgs().stream()
+                    .filter(a -> a.startsWith("--config="))
+                    .toList();
+            assertEquals(1, configs.size(),
+                    "only one --config= should remain: " + op.jBangArgs());
+            assertTrue(configs.get(0).endsWith("/tmp/second"),
+                    "last value should win: " + configs.get(0));
+        }
     }
 
     @Nested
@@ -98,7 +366,8 @@ class JBangOperationTest {
                     }
                     """);
 
-            new JBangOperation()
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .env("CUSTOM", "value")
@@ -126,7 +395,8 @@ class JBangOperationTest {
                     """);
 
             var vars = Map.of("A", "1", "B", "2");
-            new JBangOperation()
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .env(vars)
@@ -150,7 +420,8 @@ class JBangOperationTest {
                     }
                     """);
 
-            new JBangOperation()
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .env("FOO", "first")
@@ -204,7 +475,8 @@ class JBangOperationTest {
                     }
                     """);
 
-            new JBangOperation()
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .env("FOO", "bar")
@@ -228,10 +500,12 @@ class JBangOperationTest {
                     }
                     """);
 
-            // This test just verifies the var is passed. Won't actually change JDK
-            // unless JAVA_HOME points to a valid JDK, but JBang will use it if valid.
-            var fakeHome = tempDir.resolve("fakejdk").toString();
-            new JBangOperation()
+            // This test just verifies the var is passed. JAVA_HOME influences the JDK
+            // JBang selects when it is a valid JDK; JBANG_JAVA, when set, takes
+            // precedence for script execution
+            var fakeHome = tempDir.resolve("fake-jdk").toString();
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .env("JAVA_HOME", fakeHome)
@@ -251,9 +525,54 @@ class JBangOperationTest {
     class ExecuteTests {
 
         @Test
+        @DisplayName("execute with explicit version")
+        void executeWithExplicitVersion(@TempDir Path tempDir) throws IOException {
+            var requested = "0.142.0";
+            var out = tempDir.resolve("out.txt");
+            var script = tempDir.resolve("version.java");
+            Files.writeString(script, """
+                    ///usr/bin/env jbang
+                    class version {
+                        public static void main(String[] args) throws Exception {
+                            java.nio.file.Files.writeString(
+                                    java.nio.file.Path.of(args[0]),
+                                    "RAN");
+                        }
+                    }
+                    """);
+
+            var op = newJBangOperation()
+                    .version(requested)
+                    .workDir(tempDir.toFile())
+                    .script(script.toString())
+                    .args(out.toString())
+                    .inheritIO(false)
+                    .exitOnFailure(false);
+
+            assertDoesNotThrow(op::execute,
+                    "JBang " + requested + " should execute the script");
+
+            assertTrue(Files.exists(out),
+                    "script should have run under JBang " + requested);
+            assertEquals("RAN", Files.readString(out));
+
+            // The downloaded distribution should be under the requested version directory
+            var extracted = new File(
+                    "src/test/resources/TestProject/lib/.sandbox/bld-jbang/jbang-" + requested);
+            assertTrue(extracted.isDirectory(),
+                    "sandbox should contain jbang-" + requested + ": " + extracted.getAbsolutePath());
+
+            var versionTxt = new File(extracted, "version.txt");
+            assertTrue(versionTxt.isFile(),
+                    "distribution should contain version.txt: " + versionTxt.getAbsolutePath());
+            assertEquals(requested, Files.readString(versionTxt.toPath()).trim(),
+                    "extracted distribution should be version " + requested);
+        }
+
+        @Test
         void executeWithNoExitOnFailure(@TempDir Path tempDir) throws Exception {
-            var op = new JBangOperation()
-                    .fromProject(new BaseProject())
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .jBangArgs("init", "foo.java")
                     .workDir(tempDir);
             op.execute();
@@ -267,8 +586,8 @@ class JBangOperationTest {
 
         @Test
         void executeWithSilent() throws Exception {
-            new JBangOperation()
-                    .fromProject(new BaseProject())
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .silent(true)
                     .jBangArgs("version")
                     .execute();
@@ -280,8 +599,8 @@ class JBangOperationTest {
         void executeWithSuppressAllLogs() throws Exception {
             logger.setLevel(Level.OFF);
 
-            new JBangOperation()
-                    .fromProject(new BaseProject())
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .silent(true)
                     .jBangArgs("version")
                     .execute();
@@ -291,8 +610,8 @@ class JBangOperationTest {
         @Test
         void executeWithoutCommandLogging() throws Exception {
             logger.setLevel(Level.WARNING);
-            new JBangOperation()
-                    .fromProject(new BaseProject())
+            newJBangOperation()
+                    .useDownloadedJBang()
                     .jBangArgs("version")
                     .execute();
             assertTrue(testLogHandler.isEmpty());
@@ -301,8 +620,8 @@ class JBangOperationTest {
         @Test
         void helloWorld(@TempDir Path tempDir) throws IOException {
             var helloTxt = tempDir.resolve("hello.txt");
-            var op = new JBangOperation()
-                    .fromProject(new BaseProject())
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .jBangArgs("--quiet")
                     .script("src/test/resources/Hello.java")
                     .args(helloTxt.toString());
@@ -312,8 +631,8 @@ class JBangOperationTest {
 
         @Test
         void helloWorldInvalidArgs() {
-            var op = new JBangOperation()
-                    .fromProject(new BaseProject())
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .jBangArgs("--quiet")
                     .script("src/test/resources/Hello.java")
                     .args("foo/bar.txt");
@@ -322,11 +641,138 @@ class JBangOperationTest {
 
         @Test
         void helloWorldNoArgs() {
-            var op = new JBangOperation()
-                    .fromProject(new BaseProject())
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .jBangArgs("--quiet")
                     .script("src/test/resources/Hello.java");
             assertThrows(ExitStatusException.class, op::execute);
+        }
+    }
+
+    @Nested
+    @DisplayName("Help Compatibility Tests")
+    @DisabledOnCi
+    class HelpCompatibilityTests {
+
+        private static final String HELP_RESOURCE = "src/test/resources/TestProject";
+
+        /**
+         * Flags JBang documents that this extension deliberately does not expose.
+         * Add here when JBang gains a flag we choose not to support; remove when a setter is added.
+         */
+        private static final Set<String> KNOWN_UNSUPPORTED =
+                Set.of("--help", "--version", "--live", "--open");
+
+        /**
+         * One row per dedicated setter: its name, how to invoke it, and the {@code jbang}
+         * argument it is expected to produce. {@code --config=...} is normalized to
+         * {@code --config} for the help-flag comparison.
+         */
+        private static final List<SetterCase> SETTER_CASES = List.of(
+                new SetterCase("verbose", op -> op.verbose(true), "--verbose"),
+                new SetterCase("quiet", op -> op.quiet(true), "--quiet"),
+                new SetterCase("offline", op -> op.offline(true), "--offline"),
+                new SetterCase("fresh", op -> op.fresh(true), "--fresh"),
+                new SetterCase("insecure", op -> op.insecure(true), "--insecure"),
+                new SetterCase("stacktrace", op -> op.stacktrace(true), "--stacktrace"),
+                new SetterCase("noNetrc", op -> op.noNetrc(true), "--no-netrc"),
+                new SetterCase("config", op -> op.config("/tmp/x"), "--config=/tmp/x"),
+                new SetterCase("netrc", op -> op.netrc("/tmp/x"), "--netrc=/tmp/x")
+        );
+
+        /**
+         * Strips {@code =value} from an expected argument so it can be compared to a help flag.
+         */
+        private static String flagOf(String expectedArg) {
+            var eq = expectedArg.indexOf('=');
+            return eq < 0 ? expectedArg : expectedArg.substring(0, eq);
+        }
+
+        /**
+         * Parses {@code --flag} tokens out of a {@code --help} dump. Each {@code --[no-]name}
+         * expands to both {@code --name} and {@code --no-name}; {@code --foo=bar} is truncated
+         * to {@code --foo}.
+         */
+        private static Set<String> flagsIn(String helpText) {
+            var flags = new TreeSet<String>();
+            var matcher = Pattern.compile("--(?:\\[no-])?[A-Za-z][\\w-]*").matcher(helpText);
+            while (matcher.find()) {
+                var token = matcher.group();
+                if (token.startsWith("--[no-]")) {
+                    var name = token.substring("--[no-]".length());
+                    flags.add("--" + name);
+                    flags.add("--no-" + name);
+                } else {
+                    flags.add(token);
+                }
+            }
+            return flags;
+        }
+
+        private static JBangOperation opFor(SetterCase c) {
+            return c.apply().apply(new JBangOperation());
+        }
+
+        @SuppressWarnings("PMD.SignatureDeclareThrowsException")
+        private String jbangHelp() throws Exception {
+            var out = new StringBuilder();
+            new JBangOperation()
+                    .workDir(new File(HELP_RESOURCE))
+                    .jBangArgs("--help")
+                    .inheritIO(false)
+                    .outputConsumer(line -> out.append(line).append('\n'))
+                    .exitOnFailure(false)
+                    .execute();
+            return out.toString();
+        }
+
+        @Test
+        @DisplayName("no new JBang flags have gone unsupported")
+        void noNewFlagsAppearUndetected() throws Exception {
+            var unaccounted = new TreeSet<>(flagsIn(jbangHelp()));
+            unaccounted.removeAll(KNOWN_UNSUPPORTED);
+            for (var c : SETTER_CASES) {
+                var flag = flagOf(c.expected());
+                unaccounted.remove(flag);
+                // A setter for "--x" also covers a documented "--[no-]x" (→ --no-x), and vice versa.
+                if (flag.startsWith("--no-")) {
+                    unaccounted.remove("--" + flag.substring(5));
+                } else {
+                    unaccounted.remove("--no-" + flag.substring(2));
+                }
+            }
+
+            assertTrue(unaccounted.isEmpty(),
+                    () -> "New JBang flags detected that the extension does not handle: " + unaccounted
+                            + "\nEither add a setter, or add the flag to KNOWN_UNSUPPORTED.");
+        }
+
+        @Test
+        @DisplayName("every dedicated setter maps to a flag in jbang --help")
+        void settersMatchHelpOutput() throws Exception {
+            var documented = flagsIn(jbangHelp());
+            assertFalse(documented.isEmpty(), "jbang --help produced no flags");
+
+            assertAll(SETTER_CASES.stream().map(c -> () -> {
+                var op = opFor(c);
+                assertTrue(op.jBangArgs().contains(c.expected()),
+                        () -> "Setter " + c.name() + " did not produce expected argument: "
+                                + c.expected() + " in " + op.jBangArgs());
+
+                var flag = flagOf(c.expected());
+                assertTrue(documented.contains(flag),
+                        () -> "Setter " + c.name() + " maps to " + c.expected()
+                                + " but " + flag + " is not documented in jbang --help: " + documented);
+            }));
+        }
+
+        /**
+         * {@code apply} takes a fresh {@link JBangOperation} and applies one setter call.
+         */
+        private record SetterCase(String name,
+                                  java.util.function.UnaryOperator<JBangOperation> apply,
+                                  String expected) {
+
         }
     }
 
@@ -348,14 +794,14 @@ class JBangOperationTest {
                     }
                     """);
 
-            var op = new JBangOperation()
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .inheritIO(false)
                     .exitOnFailure(true);
 
             assertThrows(ExitStatusException.class, op::execute);
-            testLogHandler.printLogMessages();
             assertTrue(testLogHandler.containsMessage("this is an error"),
                     "stderr from failed process should be captured when inheritIO=false");
         }
@@ -374,14 +820,13 @@ class JBangOperationTest {
                     }
                     """);
 
-
-            var op = new JBangOperation()
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .inheritIO(false); // capture output
             assertDoesNotThrow(op::execute);
 
-            testLogHandler.printLogMessages();
             // Both stdout and stderr should be in the log handler
             assertTrue(testLogHandler.containsMessage("captured stdout"),
                     "stdout should be captured when inheritIO=false");
@@ -404,8 +849,8 @@ class JBangOperationTest {
                     }
                     """);
 
-
-            var op = new JBangOperation()
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .inheritIO(false)
@@ -433,7 +878,8 @@ class JBangOperationTest {
 
             logger.setLevel(Level.ALL);
 
-            var op = new JBangOperation()
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tempDir.toFile())
                     .script(script.toString())
                     .inheritIO(true) // inherit - output goes to console, not logger
@@ -454,8 +900,191 @@ class JBangOperationTest {
     }
 
     @Nested
+    @DisplayName("Latest Version Cache Tests")
+    class LatestVersionCacheTests {
+
+        @Test
+        void offlineUsesCachedVersion(@TempDir Path tempDir) throws Exception {
+            var project = new TempDirProject(tempDir);
+            writeCache(project, "0.142.0\n");
+            var op = new JBangOperation()
+                    .fromProject(project)
+                    .useDownloadedJBang()
+                    .offline(true);
+
+            var command = op.buildJBangCommand();
+            assertTrue(command.get(0).contains("jbang-0.142.0"),
+                    "cached version must be used offline: " + command.get(0));
+        }
+
+        @Test
+        void offlineWithEmptyCacheFails(@TempDir Path tempDir) throws Exception {
+            var project = new TempDirProject(tempDir);
+            writeCache(project, "  \n");
+            var op = new JBangOperation()
+                    .fromProject(project)
+                    .useDownloadedJBang()
+                    .offline(true);
+
+            assertThrows(ExitStatusException.class, op::buildJBangCommand);
+            assertTrue(testLogHandler.containsMessage("while offline"));
+        }
+
+        @Test
+        void offlineWithoutCacheFails(@TempDir Path tempDir) {
+            var op = new JBangOperation()
+                    .fromProject(new TempDirProject(tempDir))
+                    .useDownloadedJBang()
+                    .offline(true);
+
+            assertThrows(ExitStatusException.class, op::buildJBangCommand);
+            assertTrue(testLogHandler.containsMessage("while offline"));
+        }
+
+        private void writeCache(BaseProject project, String content) throws IOException {
+            var dir = project.buildDirectory().toPath();
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve(".jbang-latest-version"), content);
+        }
+    }
+
+    @Nested
+    @DisplayName("Netrc Tests")
+    class NetrcTests {
+
+        @Test
+        void netrcAsFile() {
+            var file = new File("/tmp/netrc");
+            var op = new JBangOperation().netrc(file);
+            assertTrue(op.jBangArgs().contains("--netrc=" + file.getAbsolutePath()));
+        }
+
+        @Test
+        void netrcAsPath() {
+            var path = Path.of("/tmp/netrc");
+            var op = new JBangOperation().netrc(path);
+            assertTrue(op.jBangArgs().contains("--netrc=" + path.toFile().getAbsolutePath()));
+        }
+
+        @Test
+        void netrcAsString() {
+            var op = new JBangOperation().netrc("/tmp/netrc");
+            assertTrue(op.jBangArgs().contains(
+                            "--netrc=" + new File("/tmp/netrc").getAbsolutePath()),
+                    "jBangArgs should contain --netrc=<absolute path>: " + op.jBangArgs());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"", "  "})
+        void netrcRejectsBlankString(String value) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JBangOperation().netrc(value));
+        }
+
+        @Test
+        void netrcRejectsNullFile() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().netrc((File) null));
+        }
+
+        @Test
+        void netrcRejectsNullPath() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().netrc((Path) null));
+        }
+
+        @Test
+        void netrcRejectsNullString() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().netrc((String) null));
+        }
+
+        @Test
+        void netrcReplacesPreviousValue() {
+            var op = new JBangOperation()
+                    .netrc("/tmp/first")
+                    .netrc("/tmp/second");
+            var netrcs = op.jBangArgs().stream()
+                    .filter(a -> a.startsWith("--netrc="))
+                    .toList();
+            assertEquals(1, netrcs.size(),
+                    "only one --netrc= should remain: " + op.jBangArgs());
+            assertTrue(netrcs.get(0).endsWith("/tmp/second"),
+                    "last value should win: " + netrcs.get(0));
+        }
+
+        @Test
+        void noNetrcDisabled() {
+            var op = new JBangOperation()
+                    .noNetrc(true)
+                    .noNetrc(false);
+            assertFalse(op.jBangArgs().contains("--no-netrc"),
+                    "--no-netrc should be removed when disabled: " + op.jBangArgs());
+        }
+
+        @Test
+        void noNetrcEnabled() {
+            var op = new JBangOperation().noNetrc(true);
+            assertTrue(op.jBangArgs().contains("--no-netrc"),
+                    "jBangArgs should contain --no-netrc: " + op.jBangArgs());
+        }
+
+        @Test
+        void noNetrcIsIdempotent() {
+            var op = new JBangOperation()
+                    .noNetrc(true)
+                    .noNetrc(true);
+            assertEquals(1, op.jBangArgs().stream()
+                            .filter(("--no-netrc")::equals).count(),
+                    "duplicate --no-netrc should not accumulate: " + op.jBangArgs());
+        }
+    }
+
+    @Nested
     @DisplayName("Options Tests")
     class Options {
+
+        @Test
+        void optionFlagSetters() {
+            var op = new JBangOperation();
+            op.verbose(true).quiet(true).offline(true).fresh(true)
+                    .insecure(true).stacktrace(true).noNetrc(true);
+            assertTrue(op.jBangArgs().contains("--verbose"));
+            assertTrue(op.jBangArgs().contains("--quiet"));
+            assertTrue(op.jBangArgs().contains("--offline"));
+            assertTrue(op.jBangArgs().contains("--fresh"));
+            assertTrue(op.jBangArgs().contains("--insecure"));
+            assertTrue(op.jBangArgs().contains("--stacktrace"));
+            assertTrue(op.jBangArgs().contains("--no-netrc"));
+        }
+
+        @Test
+        void optionFlagSettersAreIdempotent() {
+            var op = new JBangOperation()
+                    .verbose(true).verbose(true);
+            assertEquals(1, op.jBangArgs().stream()
+                    .filter(("--verbose")::equals).count());
+        }
+
+        @Test
+        void optionValueSetters() {
+            var op = new JBangOperation()
+                    .config("/tmp/config")
+                    .netrc("/tmp/netrc");
+            assertTrue(op.jBangArgs().contains("--config=/tmp/config"));
+            assertTrue(op.jBangArgs().contains("--netrc=/tmp/netrc"));
+        }
+
+        @Test
+        void optionValueSettersReplacePrevious() {
+            var op = new JBangOperation()
+                    .config("/tmp/a")
+                    .config("/tmp/b");
+            assertEquals(1, op.jBangArgs().stream()
+                    .filter(a -> a.startsWith("--config=")).count());
+            assertTrue(op.jBangArgs().contains("--config=/tmp/b"));
+            assertFalse(op.jBangArgs().contains("--config=/tmp/a"));
+        }
 
         @Test
         void verifyReset() {
@@ -464,13 +1093,13 @@ class JBangOperationTest {
                     .jBangArgs("run")
                     .script("Hello.java")
                     .args("foo", "bar")
-                    .env("TEST", "value"); // add this
+                    .env("TEST", "value");
 
             assertFalse(op.isExitOnFailure(), "exitOnFailure should be false");
             assertEquals(1, op.jBangArgs().size(), "jBangArgs should have 1 element");
             assertEquals("Hello.java", op.script(), "script should be Hello.java");
             assertEquals(2, op.args().size(), "args should have 2 elements");
-            assertEquals("value", op.env().get("TEST"), "env should have TEST"); // add this
+            assertEquals("value", op.env().get("TEST"), "env should have TEST");
 
             op.reset();
 
@@ -481,6 +1110,38 @@ class JBangOperationTest {
             assertTrue(op.env().isEmpty(), "env should be empty");
         }
 
+        @Test
+        void verifyResetPreservesConfiguration() {
+            var version = new VersionNumber(0, 142, 0);
+            var op = new JBangOperation()
+                    .workDir(".")
+                    .jBangHome("foo")
+                    .timeout(30L)
+                    .inheritIO(false)
+                    .version(version)
+                    .script("Hello.java");
+
+            op.reset();
+
+            assertEquals(new File("."), op.workDir());
+            assertEquals(new File("foo"), op.jBangHome());
+            assertEquals(30L, op.timeout());
+            assertFalse(op.isInheritIO());
+            assertEquals(version, op.version());
+            assertNull(op.script());
+        }
+
+        @Test
+        void verifyResetPreservesUseDownloadedJBang() throws Exception {
+            var op = new JBangOperation().useDownloadedJBang();
+
+            op.reset();
+            op.buildJBangCommand();
+
+            assertTrue(testLogHandler.containsMessage("downloaded JBang was requested"),
+                    "useDownloadedJBang must survive reset()");
+        }
+
         @Nested
         @DisplayName("Args Tests")
         class ArgsTests {
@@ -488,27 +1149,27 @@ class JBangOperationTest {
             @Test
             @RandomString(size = 2)
             void verifyArgs(List<String> args) {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .args(args);
+                var op = newJBangOperation().args(args);
                 assertEquals(op.args().size(), args.size());
                 assertTrue(op.args().containsAll(args));
             }
 
             @Test
+            void verifyArgsAccumulate() {
+                var op = newJBangOperation().args("foo").args(List.of("bar")).args("baz");
+                assertEquals(List.of("foo", "bar", "baz"), op.args());
+            }
+
+            @Test
             void verifyArgsAsArray() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .args("foo", "bar");
+                var op = newJBangOperation().args("foo", "bar");
                 assertEquals(2, op.args().size());
                 assertTrue(op.args().containsAll(List.of("foo", "bar")));
             }
 
-
             @Test
             void verifyEmptyArgsList() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject());
+                var op = newJBangOperation();
                 assertThrows(IllegalArgumentException.class, () -> op.args(List.of()));
             }
         }
@@ -571,26 +1232,27 @@ class JBangOperationTest {
 
             @Test
             void verifyEmptyJBangArgsList() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject());
+                var op = newJBangOperation();
                 assertThrows(IllegalArgumentException.class, () -> op.jBangArgs(List.of()));
             }
 
             @Test
             @RandomString(size = 2)
             void verifyJBangArgs(List<String> args) {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangArgs(args);
+                var op = newJBangOperation().jBangArgs(args);
                 assertEquals(2, op.jBangArgs().size());
                 assertTrue(op.jBangArgs().containsAll(args));
             }
 
             @Test
+            void verifyJBangArgsAccumulate() {
+                var op = newJBangOperation().jBangArgs("foo").jBangArgs(List.of("bar"));
+                assertEquals(List.of("foo", "bar"), op.jBangArgs());
+            }
+
+            @Test
             void verifyJBangArgsAsArray() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangArgs("foo", "bar");
+                var op = newJBangOperation().jBangArgs("foo", "bar");
                 assertEquals(2, op.jBangArgs().size());
                 assertTrue(op.jBangArgs().containsAll(List.of("foo", "bar")));
             }
@@ -602,8 +1264,7 @@ class JBangOperationTest {
 
             @Test
             void executeWithInvalidJBangHome() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
+                var op = newJBangOperation()
                         .jBangHome("/invalid/path")
                         .jBangArgs("version");
                 var e = assertThrows(Exception.class, op::execute);
@@ -614,8 +1275,7 @@ class JBangOperationTest {
             @EnabledOnOs({OS.LINUX, OS.MAC})
             @EnabledOnCi
             void executeWithJBangHomeOnCi() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
+                var op = newJBangOperation()
                         .jBangHome(Path.of(System.getenv("HOME"), ".jbang"))
                         .jBangArgs("version");
                 assertDoesNotThrow(op::execute);
@@ -623,6 +1283,7 @@ class JBangOperationTest {
 
             @Test
             void executeWithNullJBangHome() {
+                assumeTrue(isJBangOnPath(), "jbang must be on the PATH");
                 var op = new JBangOperation()
                         .workDir(".")
                         .jBangArgs("version");
@@ -632,29 +1293,21 @@ class JBangOperationTest {
             @Test
             void verifyJBangHome() {
                 var foo = new File("foo");
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangHome(foo);
+                var op = newJBangOperation().jBangHome(foo);
                 assertEquals(foo, op.jBangHome());
-
             }
 
             @Test
             void verifyJBangHomeAsPath() {
                 var foo = Path.of("foo");
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangHome(foo);
+                var op = newJBangOperation().jBangHome(foo);
                 assertEquals(foo.toFile(), op.jBangHome());
             }
 
             @Test
             void verifyJBangHomeAsString() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .jBangHome("foo");
+                var op = newJBangOperation().jBangHome("foo");
                 assertEquals("foo", op.jBangHome().toString());
-
             }
         }
 
@@ -664,8 +1317,8 @@ class JBangOperationTest {
 
             @Test
             void executeWithMissingScript() {
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
+                var op = newJBangOperation()
+                        .useDownloadedJBang()
                         .jBangArgs("run");
                 var e = assertThrows(Exception.class, op::execute);
                 assertInstanceOf(ExitStatusException.class, e);
@@ -674,9 +1327,7 @@ class JBangOperationTest {
             @Test
             void verifyScript() {
                 var script = "src/test/resources/Hello.java";
-                var op = new JBangOperation()
-                        .fromProject(new BaseProject())
-                        .script(script);
+                var op = newJBangOperation().script(script);
                 assertEquals(script, op.script());
             }
         }
@@ -687,14 +1338,14 @@ class JBangOperationTest {
 
             @Test
             void verifyWorkDir() {
-                var project = new BaseProject();
+                var project = new TestProject();
                 var op = new JBangOperation().fromProject(project);
-                assertEquals(project.workDirectory(), op.workDir());
+                assertEquals(project.workDirectory().getAbsoluteFile(), op.workDir());
             }
 
             @Test
             void verifyWorkDirAsFile() {
-                var project = new BaseProject();
+                var project = new TestProject();
                 var op = new JBangOperation()
                         .fromProject(project)
                         .workDir(new File("foo"));
@@ -703,7 +1354,7 @@ class JBangOperationTest {
 
             @Test
             void verifyWorkDirAsPath() {
-                var project = new BaseProject();
+                var project = new TestProject();
                 var op = new JBangOperation()
                         .fromProject(project)
                         .workDir(Path.of("foo"));
@@ -712,7 +1363,7 @@ class JBangOperationTest {
 
             @Test
             void verifyWorkDirAsString() {
-                var project = new BaseProject();
+                var project = new TestProject();
                 var op = new JBangOperation()
                         .fromProject(project)
                         .workDir("foo");
@@ -781,6 +1432,12 @@ class JBangOperationTest {
         }
 
         @Test
+        void timeoutAllowsAnyNegativeAsNoTimeout() {
+            var op = new JBangOperation().timeout(-5L);
+            assertEquals(-5L, op.timeout(), "Any negative value means 'wait forever'");
+        }
+
+        @Test
         void timeoutCanBeOverridden() {
             var op = new JBangOperation().timeout(30L);
             assertEquals(30L, op.timeout());
@@ -798,7 +1455,8 @@ class JBangOperationTest {
                     }
                     """);
 
-            var op = new JBangOperation()
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tmp.toFile())
                     .script(script.toString())
                     .timeout(1L) // 1 second
@@ -810,7 +1468,8 @@ class JBangOperationTest {
 
             // Verify it actually timed out fast and didn't wait 5s
             assertTimeoutPreemptively(Duration.ofSeconds(3), () -> {
-                var op2 = new JBangOperation()
+                var op2 = newJBangOperation()
+                        .useDownloadedJBang()
                         .workDir(tmp.toFile())
                         .script(script.toString())
                         .timeout(1L)
@@ -838,7 +1497,8 @@ class JBangOperationTest {
                     }
                     """);
 
-            var op = new JBangOperation()
+            var op = newJBangOperation()
+                    .useDownloadedJBang()
                     .workDir(tmp.toFile())
                     .script(script.toString())
                     .timeout(-1L) // wait forever
@@ -849,12 +1509,8 @@ class JBangOperationTest {
         }
 
         @Test
-        void timeoutRejectsNegativeOtherThanMinusOne() {
-            // Optional: if you want to guard against -2, -100, etc.
-            // Current impl treats any <= 0 as "wait forever".
-            // If you want to enforce only -1, add validation in timeout(long).
-            var op = new JBangOperation().timeout(-5L);
-            assertEquals(-5L, op.timeout(), "Currently allows any negative, treated as wait forever");
+        void timeoutZeroIsRejected() {
+            assertThrows(IllegalArgumentException.class, () -> new JBangOperation().timeout(0L));
         }
     }
 
@@ -972,6 +1628,53 @@ class JBangOperationTest {
     }
 
     @Nested
+    @DisplayName("Version Tests")
+    class VersionTests {
+
+        @Test
+        void defaultVersionIsNull() {
+            assertNull(new JBangOperation().version());
+        }
+
+        @Test
+        void pinningJBangVersionConstantIsRetained() {
+            var op = new JBangOperation().version(JBangOperation.JBANG_VERSION);
+            assertEquals(JBangOperation.JBANG_VERSION, op.version());
+        }
+
+        @Test
+        void versionAsString() {
+            assertEquals(new VersionNumber(0, 143, 0),
+                    new JBangOperation().version("0.143.0").version());
+        }
+
+        @Test
+        void versionAsVersionObject() {
+            var v = new VersionNumber(0, 143, 0);
+            assertEquals(v, new JBangOperation().version(v).version());
+        }
+
+        @Test
+        void versionObjectRejectsNull() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().version((Version) null));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"", "  "})
+        void versionStringRejectsBlank(String v) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new JBangOperation().version(v));
+        }
+
+        @Test
+        void versionStringRejectsNull() {
+            assertThrows(NullPointerException.class,
+                    () -> new JBangOperation().version((String) null));
+        }
+    }
+
+    @Nested
     @DisplayName("Work DirTests")
     class WorkDirTests {
 
@@ -981,7 +1684,7 @@ class JBangOperationTest {
 
             assertThrows(ExitStatusException.class, () ->
                     new JBangOperation()
-                            .fromProject(new BaseProject())
+                            .fromProject(new TestProject())
                             .workDir("foo")
                             .execute());
             assertTrue(testLogHandler.isEmpty());
@@ -991,7 +1694,7 @@ class JBangOperationTest {
         void workDirInvalid() {
             assertThrows(ExitStatusException.class, () ->
                     new JBangOperation()
-                            .fromProject(new BaseProject())
+                            .fromProject(new TestProject())
                             .workDir("foo")
                             .execute());
             assertTrue(testLogHandler.containsMessage("Invalid working directory"));
@@ -1001,7 +1704,7 @@ class JBangOperationTest {
         void workDirInvalidWithSilent() {
             assertThrows(ExitStatusException.class, () ->
                     new JBangOperation()
-                            .fromProject(new BaseProject())
+                            .fromProject(new TestProject())
                             .workDir("foo")
                             .silent(true)
                             .execute());
