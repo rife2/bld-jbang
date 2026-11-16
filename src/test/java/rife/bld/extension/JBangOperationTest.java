@@ -331,8 +331,8 @@ class JBangOperationTest {
                     .toList();
             assertEquals(1, configs.size(),
                     "only one --config= should remain: " + op.jBangArgs());
-            assertTrue(configs.get(0).endsWith("/tmp/second"),
-                    "last value should win: " + configs.get(0));
+            assertEquals("--config=" + new File("/tmp/second").getAbsolutePath(), configs.get(0),
+                    "last value should win");
         }
     }
 
@@ -676,8 +676,10 @@ class JBangOperationTest {
                 new SetterCase("insecure", op -> op.insecure(true), "--insecure"),
                 new SetterCase("stacktrace", op -> op.stacktrace(true), "--stacktrace"),
                 new SetterCase("noNetrc", op -> op.noNetrc(true), "--no-netrc"),
-                new SetterCase("config", op -> op.config("/tmp/x"), "--config=/tmp/x"),
-                new SetterCase("netrc", op -> op.netrc("/tmp/x"), "--netrc=/tmp/x")
+                new SetterCase("config", op -> op.config("/tmp/x"),
+                        "--config=" + new File("/tmp/x").getAbsolutePath()),
+                new SetterCase("netrc", op -> op.netrc("/tmp/x"),
+                        "--netrc=" + new File("/tmp/x").getAbsolutePath())
         );
 
         /**
@@ -1009,8 +1011,8 @@ class JBangOperationTest {
                     .toList();
             assertEquals(1, netrcs.size(),
                     "only one --netrc= should remain: " + op.jBangArgs());
-            assertTrue(netrcs.get(0).endsWith("/tmp/second"),
-                    "last value should win: " + netrcs.get(0));
+            assertEquals("--netrc=" + new File("/tmp/second").getAbsolutePath(), netrcs.get(0),
+                    "last value should win");
         }
 
         @Test
@@ -1071,8 +1073,8 @@ class JBangOperationTest {
             var op = new JBangOperation()
                     .config("/tmp/config")
                     .netrc("/tmp/netrc");
-            assertTrue(op.jBangArgs().contains("--config=/tmp/config"));
-            assertTrue(op.jBangArgs().contains("--netrc=/tmp/netrc"));
+            assertTrue(op.jBangArgs().contains("--config=" + new File("/tmp/config").getAbsolutePath()));
+            assertTrue(op.jBangArgs().contains("--netrc=" + new File("/tmp/netrc").getAbsolutePath()));
         }
 
         @Test
@@ -1082,8 +1084,8 @@ class JBangOperationTest {
                     .config("/tmp/b");
             assertEquals(1, op.jBangArgs().stream()
                     .filter(a -> a.startsWith("--config=")).count());
-            assertTrue(op.jBangArgs().contains("--config=/tmp/b"));
-            assertFalse(op.jBangArgs().contains("--config=/tmp/a"));
+            assertTrue(op.jBangArgs().contains("--config=" + new File("/tmp/b").getAbsolutePath()));
+            assertFalse(op.jBangArgs().contains("--config=" + new File("/tmp/a").getAbsolutePath()));
         }
 
         @Test
