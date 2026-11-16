@@ -56,19 +56,11 @@ public void jbang() throws Exception {
 
 ## Choosing the JBang launcher
 
-The extension resolves the JBang executable in this order:
+By default, the extension uses an existing JBang installation when available,
+or downloads the latest release into the sandbox when none is found. Downloading
+requires a project.
 
-1. A specific `version(...)`, when set — that version is downloaded into the
-   sandbox and used, even when a local JBang is available.
-2. An explicit `jBangHome(...)`, or the `JBANG_HOME` environment variable.
-3. A downloaded distribution in the sandbox, when a project is available and
-   neither of the above is set.
-4. The `jbang` executable on the `PATH`.
-
-Without `fromProject(...)`, steps 1 and 3 have nowhere to download into, so
-the launcher always resolves via `jBangHome(...)`/`JBANG_HOME` or the `PATH`.
-
-To use a specific installation:
+To use a specific local installation:
 
 ```java
 new JBangOperation()
@@ -78,8 +70,7 @@ new JBangOperation()
         .execute();
 ```
 
-To force the sandbox-downloaded JBang even when `JBANG_HOME` is set (useful
-for reproducible builds):
+To always use a downloaded JBang, ignoring any local installation:
 
 ```java
 new JBangOperation()
@@ -89,14 +80,16 @@ new JBangOperation()
         .execute();
 ```
 
-`useDownloadedJBang()` and `jBangHome(...)` override each other — whichever is
-called last wins, so the call order relative to `fromProject(...)` doesn't
-matter.
+See [`jBangHome(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#jBangHome(java.io.File)>)
+and
+[`useDownloadedJBang()`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#useDownloadedJBang()>)
+for details.
 
 ## Pinning the JBang version
 
-To download and use a specific JBang version, regardless of any local
-installation:
+To download and use a specific JBang version via
+[`version(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#version(java.lang.String)>),
+regardless of any local installation:
 
 ```java
 new JBangOperation()
@@ -106,19 +99,18 @@ new JBangOperation()
         .execute();
 ```
 
-When `version(...)` is not set, the latest release is fetched from the JBang
-release server the first time the sandbox is needed. The distribution is
-cached and reused on subsequent builds.
-
-Note that `version(...)` requires a project to download into; without
-`fromProject(...)`, the explicit version is silently ignored and the
-`jBangHome`/`PATH` fallback is used instead.
-
 ## Setting JBang options
 
-Common JBang options have dedicated setters: `verbose(...)`, `quiet(...)`,
-`offline(...)`, `fresh(...)`, `insecure(...)`, `stacktrace(...)`,
-`config(...)`, `netrc(...)`, `noNetrc(...)`.
+Common JBang options have dedicated setters such as:
+[`verbose(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#verbose(boolean)>),
+[`quiet(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#quiet(boolean)>),
+[`offline(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#offline(boolean)>),
+[`fresh(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#fresh(boolean)>),
+[`insecure(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#insecure(boolean)>),
+[`stacktrace(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#stacktrace(boolean)>),
+[`config(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#config(java.lang.String)>),
+[`netrc(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#netrc(java.lang.String)>),
+etc.
 
 ```java
 new JBangOperation()
@@ -130,7 +122,7 @@ new JBangOperation()
         .execute();
 ```
 
-Anything else can be passed through `jBangArgs(...)`:
+Anything else can be passed through [`jBangArgs(...)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#jBangArgs(java.util.Collection)>):
 
 ```java
 new JBangOperation()
@@ -140,12 +132,36 @@ new JBangOperation()
         .execute();
 ```
 
+## Controlling execution
+
+The child JBang process can be tuned without changing the JBang arguments:
+
+```java
+new JBangOperation()
+        .fromProject(this)
+        .env("JAVA_HOME", "/path/to/jdk")
+        .timeout(120)
+        .inheritIO(false)
+        .outputConsumer(System.out::println)
+        .exitOnFailure(false)
+        .script("path/to/script.java")
+        .execute();
+```
+
+- **[`env(name, value)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#env(java.lang.String,java.lang.String)>)** — set environment variables for the JBang child.
+- **[`timeout(seconds)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#timeout(long)>)** — execution timeout, in seconds. Default is `600`; use a negative
+  value for no timeout. Zero is rejected.
+- **[`inheritIO(boolean)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#inheritIO(boolean)>)** — let the child inherit the current JVM's I/O.
+  Default is `true`.
+- **[`outputConsumer(Consumer<String>)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#outputConsumer(java.util.function.Consumer)>)** — receive captured output
+  when `inheritIO(false)`.
+- **[`exitOnFailure(boolean)`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#exitOnFailure(boolean)>)** — throw on a non-zero JBang exit status.
+  Default is `true`.
+
 ## Reusing an operation
 
-`reset()` clears the per-script settings — `script`, `args`, `jBangArgs`,
-`env`, and `exitOnFailure` — while keeping the project configuration
-(`workDir`, `jBangHome`, `useDownloadedJBang`, `timeout`, `inheritIO`,
-`outputConsumer`).
+Call [`reset()`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#reset()>)
+to clear per-script settings while keeping the launcher, version pin, `timeout` and I/O configuration:
 
 ```java
 var op = new JBangOperation()
@@ -153,22 +169,19 @@ var op = new JBangOperation()
         .jBangHome("/path/to/.jbang")
         .timeout(120);
 
-// First invocation
 op.script("scripts/first.java")
         .args("input.txt")
         .execute();
 
-// Clear script-specific state, keep workDir, jBangHome, timeout, ...
 op.reset();
 
-// Second invocation reuses the configuration
 op.script("scripts/second.java")
         .args("other.txt")
         .execute();
 ```
 
-If you'd rather create a fresh operation for each script, that works too —
-`reset()` is only a convenience for avoiding repeated configuration.
+Or just create a fresh operation per script — [`reset()`](<https://rife2.github.io/bld-jbang/rife/bld/extension/JBangOperation.html#reset()>)
+is only a convenience.
 
 ## API Reference
 
